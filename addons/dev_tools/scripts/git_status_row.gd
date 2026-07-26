@@ -23,7 +23,7 @@ func _ready() -> void:
 func load_entry(path: String, status: String, mode: int) -> void:
 	file_path = path
 	action_mode = mode
-	path_label.text = "[%s] %s" % [status, path]
+	path_label.text = "[%s] %s" % [status, path] if not status.is_empty() else path
 	action_button.text = "+" if mode == ActionMode.STAGE else "-"
 
 

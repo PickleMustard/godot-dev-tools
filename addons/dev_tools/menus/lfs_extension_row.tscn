@@ -1,0 +1,21 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/lfs_extension_row.gd" id="1"]
+
+[node name="LfsExtensionRow" type="PanelContainer"]
+script = ExtResource("1")
+
+[node name="Row" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="ExtensionLabel" type="Label" parent="Row"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+clip_text = true
+text = "*.png"
+
+[node name="TrackedCheckBox" type="CheckBox" parent="Row"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Track with LFS"
