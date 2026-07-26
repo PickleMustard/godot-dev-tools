@@ -3,6 +3,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -143,11 +144,18 @@ void GitBackend::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("open_repository", "path"), &GitBackend::open_repository);
 	ClassDB::bind_method(D_METHOD("init_repository", "path"), &GitBackend::init_repository);
 	ClassDB::bind_method(D_METHOD("get_current_branch"), &GitBackend::get_current_branch);
+	ClassDB::bind_method(D_METHOD("get_head_oid_hex"), &GitBackend::get_head_oid_hex);
 	ClassDB::bind_method(D_METHOD("get_status"), &GitBackend::get_status);
 	ClassDB::bind_method(D_METHOD("get_diff_head"), &GitBackend::get_diff_head);
 	ClassDB::bind_method(D_METHOD("get_staged_diff"), &GitBackend::get_staged_diff);
 	ClassDB::bind_method(D_METHOD("get_unstaged_diff"), &GitBackend::get_unstaged_diff);
-	ClassDB::bind_method(D_METHOD("get_commit_history", "max_count"), &GitBackend::get_commit_history);
+	ClassDB::bind_method(D_METHOD("get_commit_history", "max_count", "include_refs"), &GitBackend::get_commit_history, DEFVAL(true));
+
+	ClassDB::bind_method(D_METHOD("list_branches"), &GitBackend::list_branches);
+	ClassDB::bind_method(D_METHOD("checkout_branch", "name"), &GitBackend::checkout_branch);
+	ClassDB::bind_method(D_METHOD("create_branch", "name", "checkout_after"), &GitBackend::create_branch);
+	ClassDB::bind_method(D_METHOD("merge_branch", "source", "target"), &GitBackend::merge_branch);
+	ClassDB::bind_method(D_METHOD("commit_staged", "message"), &GitBackend::commit_staged);
 }
 
 GitBackend::GitBackend() {
@@ -258,6 +266,17 @@ String GitBackend::get_current_branch() const {
 
 	git_reference_free(head_ref);
 	return result;
+}
+
+String GitBackend::get_head_oid_hex() const {
+	if (!repo) {
+		return String("");
+	}
+	git_oid oid;
+	if (git_reference_name_to_id(&oid, repo, "HEAD") != 0) {
+		return String("");
+	}
+	return String(oid_to_hex(oid).c_str());
 }
 
 Dictionary GitBackend::get_status() const {
@@ -398,7 +417,7 @@ TypedArray<Dictionary> GitBackend::get_unstaged_diff() const {
 	return result;
 }
 
-TypedArray<Dictionary> GitBackend::get_commit_history(int max_count) const {
+TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool include_refs) const {
 	TypedArray<Dictionary> result;
 	if (!repo || max_count <= 0) {
 		return result;
@@ -406,7 +425,7 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count) const {
 
 	// oid hex -> short ref names (branch heads + tags) pointing at that commit.
 	std::unordered_map<std::string, std::vector<std::string>> refs_by_oid;
-	{
+	if (include_refs) {
 		git_reference_iterator *ref_iter = nullptr;
 		if (git_reference_iterator_new(&ref_iter, repo) == 0) {
 			git_reference *ref = nullptr;
@@ -609,4 +628,350 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count) const {
 	}
 
 	return result;
+}
+
+git_reference *GitBackend::lookup_branch_ref(const String &name) const {
+	if (!repo) {
+		return nullptr;
+	}
+	String refname = String("refs/heads/") + name;
+	git_reference *ref = nullptr;
+	git_reference_lookup(&ref, repo, refname.utf8().get_data());
+	return ref;
+}
+
+String GitBackend::get_current_branch_raw_name() const {
+	if (!repo) {
+		return String("");
+	}
+
+	if (git_repository_head_unborn(repo) == 1) {
+		String branch_name("main");
+		git_reference *symbolic_head = nullptr;
+		if (git_reference_lookup(&symbolic_head, repo, "HEAD") == 0) {
+			const char *target = git_reference_symbolic_target(symbolic_head);
+			if (target) {
+				String target_str = String::utf8(target);
+				String prefix("refs/heads/");
+				if (target_str.begins_with(prefix)) {
+					branch_name = target_str.substr(prefix.length());
+				}
+			}
+			git_reference_free(symbolic_head);
+		}
+		return branch_name;
+	}
+
+	git_reference *head_ref = nullptr;
+	if (git_repository_head(&head_ref, repo) != 0) {
+		return String("");
+	}
+
+	String result("");
+	if (git_repository_head_detached(repo) != 1) {
+		const char *name = nullptr;
+		if (git_branch_name(&name, head_ref) == 0 && name) {
+			result = String::utf8(name);
+		}
+	}
+
+	git_reference_free(head_ref);
+	return result;
+}
+
+TypedArray<Dictionary> GitBackend::list_branches() const {
+	TypedArray<Dictionary> result;
+	if (!repo) {
+		return result;
+	}
+
+	git_branch_iterator *iter = nullptr;
+	if (git_branch_iterator_new(&iter, repo, GIT_BRANCH_LOCAL) != 0) {
+		return result;
+	}
+
+	std::vector<std::pair<std::string, bool>> entries;
+	git_reference *ref = nullptr;
+	git_branch_t type;
+	while (git_branch_next(&ref, &type, iter) == 0) {
+		const char *name = nullptr;
+		if (git_branch_name(&name, ref) == 0 && name) {
+			entries.push_back(std::make_pair(std::string(name), git_branch_is_head(ref) == 1));
+		}
+		git_reference_free(ref);
+	}
+	git_branch_iterator_free(iter);
+
+	std::sort(entries.begin(), entries.end(), [](const std::pair<std::string, bool> &a, const std::pair<std::string, bool> &b) {
+		return a.first < b.first;
+	});
+
+	for (const auto &entry : entries) {
+		Dictionary d;
+		d["name"] = String::utf8(entry.first.c_str());
+		d["is_current"] = entry.second;
+		result.push_back(d);
+	}
+
+	return result;
+}
+
+bool GitBackend::checkout_branch(const String &name) {
+	if (!repo) {
+		return false;
+	}
+
+	git_reference *branch_ref = lookup_branch_ref(name);
+	if (!branch_ref) {
+		UtilityFunctions::push_warning("GitBackend: branch '", name, "' not found.");
+		return false;
+	}
+
+	git_object *target_obj = nullptr;
+	if (git_reference_peel(&target_obj, branch_ref, GIT_OBJECT_COMMIT) != 0) {
+		git_reference_free(branch_ref);
+		UtilityFunctions::push_warning("GitBackend: could not resolve commit for branch '", name, "'.");
+		return false;
+	}
+
+	git_checkout_options checkout_opts = GIT_CHECKOUT_OPTIONS_INIT;
+	checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE;
+
+	int rc = git_checkout_tree(repo, target_obj, &checkout_opts);
+	git_object_free(target_obj);
+
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		git_reference_free(branch_ref);
+		UtilityFunctions::push_warning("GitBackend: checkout of '", name, "' failed (uncommitted changes conflict?): ",
+				(err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+
+	String refname = String("refs/heads/") + name;
+	rc = git_repository_set_head(repo, refname.utf8().get_data());
+	git_reference_free(branch_ref);
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to move HEAD to '", name, "': ",
+				(err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
+}
+
+bool GitBackend::create_branch(const String &name, bool checkout_after) {
+	if (!repo) {
+		return false;
+	}
+	if (git_repository_head_unborn(repo) == 1) {
+		UtilityFunctions::push_warning("GitBackend: cannot create branch '", name, "': repository has no commits yet.");
+		return false;
+	}
+
+	git_reference *head_ref = nullptr;
+	if (git_repository_head(&head_ref, repo) != 0) {
+		return false;
+	}
+	git_object *head_commit_obj = nullptr;
+	if (git_reference_peel(&head_commit_obj, head_ref, GIT_OBJECT_COMMIT) != 0) {
+		git_reference_free(head_ref);
+		return false;
+	}
+	git_reference_free(head_ref);
+
+	git_reference *new_ref = nullptr;
+	int rc = git_branch_create(&new_ref, repo, name.utf8().get_data(),
+			reinterpret_cast<git_commit *>(head_commit_obj), /*force=*/0);
+	git_object_free(head_commit_obj);
+
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to create branch '", name, "': ",
+				(err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	git_reference_free(new_ref);
+
+	if (checkout_after) {
+		checkout_branch(name);
+	}
+	return true;
+}
+
+int GitBackend::merge_branch(const String &source, const String &target) {
+	if (!repo) {
+		return -1;
+	}
+
+	if (get_current_branch_raw_name() != target) {
+		if (!checkout_branch(target)) {
+			return -1;
+		}
+	}
+
+	git_reference *source_ref = lookup_branch_ref(source);
+	if (!source_ref) {
+		UtilityFunctions::push_warning("GitBackend: source branch '", source, "' not found.");
+		return -1;
+	}
+
+	git_annotated_commit *their_head = nullptr;
+	if (git_annotated_commit_from_ref(&their_head, repo, source_ref) != 0) {
+		git_reference_free(source_ref);
+		return -1;
+	}
+
+	git_merge_analysis_t analysis;
+	git_merge_preference_t preference;
+	const git_annotated_commit *heads[1] = { their_head };
+	if (git_merge_analysis(&analysis, &preference, repo, heads, 1) != 0) {
+		git_annotated_commit_free(their_head);
+		git_reference_free(source_ref);
+		return -1;
+	}
+
+	int result = -1;
+
+	if (analysis & GIT_MERGE_ANALYSIS_UP_TO_DATE) {
+		UtilityFunctions::push_warning("GitBackend: '", target, "' already contains all commits from '", source, "'; nothing to merge.");
+		result = 1;
+	} else if (analysis & GIT_MERGE_ANALYSIS_FASTFORWARD) {
+		git_reference *target_ref = lookup_branch_ref(target);
+		const git_oid *source_oid = git_annotated_commit_id(their_head);
+		git_reference *new_ref = nullptr;
+		int rc = target_ref ? git_reference_set_target(&new_ref, target_ref, source_oid, "merge: Fast-forward") : -1;
+		if (rc == 0) {
+			git_commit *source_commit = nullptr;
+			git_tree *ff_tree = nullptr;
+			if (git_commit_lookup(&source_commit, repo, source_oid) == 0) {
+				git_commit_tree(&ff_tree, source_commit);
+			}
+			git_checkout_options ff_opts = GIT_CHECKOUT_OPTIONS_INIT;
+			ff_opts.checkout_strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_FORCE;
+			if (ff_tree) {
+				git_checkout_tree(repo, reinterpret_cast<git_object *>(ff_tree), &ff_opts);
+				git_tree_free(ff_tree);
+			}
+			if (source_commit) {
+				git_commit_free(source_commit);
+			}
+			git_reference_free(new_ref);
+			result = 0;
+		} else {
+			const git_error *err = git_error_last();
+			UtilityFunctions::push_warning("GitBackend: fast-forward merge failed: ", (err && err->message) ? err->message : "unknown error");
+		}
+		if (target_ref) {
+			git_reference_free(target_ref);
+		}
+	} else if (analysis & GIT_MERGE_ANALYSIS_NORMAL) {
+		git_reference *target_ref_before = lookup_branch_ref(target);
+		git_oid target_tip_oid = { 0 };
+		if (target_ref_before) {
+			const git_oid *tip = git_reference_target(target_ref_before);
+			if (tip) {
+				target_tip_oid = *tip;
+			}
+			git_reference_free(target_ref_before);
+		}
+
+		git_merge_options merge_opts = GIT_MERGE_OPTIONS_INIT;
+		git_checkout_options checkout_opts = GIT_CHECKOUT_OPTIONS_INIT;
+		checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE;
+
+		int rc = git_merge(repo, heads, 1, &merge_opts, &checkout_opts);
+		if (rc != 0) {
+			const git_error *err = git_error_last();
+			UtilityFunctions::push_warning("GitBackend: merge failed: ", (err && err->message) ? err->message : "unknown error");
+			git_repository_state_cleanup(repo);
+		} else {
+			git_index *index = nullptr;
+			git_repository_index(&index, repo);
+			if (index && git_index_has_conflicts(index)) {
+				UtilityFunctions::push_warning("GitBackend: merge of '", source, "' into '", target,
+						"' produced conflicts; resolve manually with the git CLI, then retry.");
+				git_checkout_options reset_opts = GIT_CHECKOUT_OPTIONS_INIT;
+				reset_opts.checkout_strategy = GIT_CHECKOUT_FORCE;
+				git_checkout_head(repo, &reset_opts);
+				git_repository_state_cleanup(repo);
+			} else if (index) {
+				git_oid tree_oid;
+				git_index_write_tree(&tree_oid, index);
+				git_tree *merged_tree = nullptr;
+				git_tree_lookup(&merged_tree, repo, &tree_oid);
+
+				git_commit *target_commit = nullptr;
+				git_commit_lookup(&target_commit, repo, &target_tip_oid);
+				git_commit *source_commit = nullptr;
+				git_commit_lookup(&source_commit, repo, git_annotated_commit_id(their_head));
+
+				git_signature *sig = nullptr;
+				git_signature_default(&sig, repo);
+
+				String msg = String("Merge branch '") + source + String("' into ") + target;
+				const git_commit *parents[2] = { target_commit, source_commit };
+				git_oid new_commit_oid;
+				rc = (sig && target_commit && source_commit && merged_tree)
+						? git_commit_create(&new_commit_oid, repo, "HEAD", sig, sig, nullptr,
+								  msg.utf8().get_data(), merged_tree, 2, parents)
+						: -1;
+				if (rc == 0) {
+					result = 0;
+				} else {
+					const git_error *err = git_error_last();
+					UtilityFunctions::push_warning("GitBackend: failed to create merge commit: ", (err && err->message) ? err->message : "unknown error");
+				}
+
+				if (sig) {
+					git_signature_free(sig);
+				}
+				if (target_commit) {
+					git_commit_free(target_commit);
+				}
+				if (source_commit) {
+					git_commit_free(source_commit);
+				}
+				if (merged_tree) {
+					git_tree_free(merged_tree);
+				}
+				git_repository_state_cleanup(repo);
+			}
+			if (index) {
+				git_index_free(index);
+			}
+		}
+	} else {
+		UtilityFunctions::push_warning("GitBackend: cannot merge '", source, "' into '", target, "' (unsupported merge state).");
+	}
+
+	git_annotated_commit_free(their_head);
+	git_reference_free(source_ref);
+	return result;
+}
+
+bool GitBackend::commit_staged(const String &message) const {
+	if (!repo) {
+		return false;
+	}
+	String trimmed = message.strip_edges();
+	if (trimmed.is_empty()) {
+		UtilityFunctions::push_warning("GitBackend: commit message is empty.");
+		return false;
+	}
+
+	git_commit_create_options opts = GIT_COMMIT_CREATE_OPTIONS_INIT;
+	git_oid new_commit_oid;
+	int rc = git_commit_create_from_stage(&new_commit_oid, repo, trimmed.utf8().get_data(), &opts);
+
+	if (rc == GIT_EUNCHANGED) {
+		UtilityFunctions::push_warning("GitBackend: nothing staged to commit.");
+		return false;
+	}
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: commit failed: ", (err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
 }

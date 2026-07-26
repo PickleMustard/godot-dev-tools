@@ -23,6 +23,8 @@ private:
 	void close_repository();
 	git_tree *resolve_head_tree() const;
 	TypedArray<Dictionary> diff_to_array(git_diff *diff) const;
+	git_reference *lookup_branch_ref(const String &name) const;
+	String get_current_branch_raw_name() const;
 
 public:
 	GitBackend();
@@ -32,11 +34,18 @@ public:
 	bool init_repository(const String &path);
 
 	String get_current_branch() const;
+	String get_head_oid_hex() const;
 	Dictionary get_status() const;
 	TypedArray<Dictionary> get_diff_head() const;
 	TypedArray<Dictionary> get_staged_diff() const;
 	TypedArray<Dictionary> get_unstaged_diff() const;
-	TypedArray<Dictionary> get_commit_history(int max_count) const;
+	TypedArray<Dictionary> get_commit_history(int max_count, bool include_refs = true) const;
+
+	TypedArray<Dictionary> list_branches() const;
+	bool checkout_branch(const String &name);
+	bool create_branch(const String &name, bool checkout_after);
+	int merge_branch(const String &source, const String &target);
+	bool commit_staged(const String &message) const;
 };
 
 } // namespace godot

@@ -1,9 +1,10 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_visualizer.gd" id="1"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_diff_view.gd" id="2"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_staging_view.gd" id="3"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_history_view.gd" id="4"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_branches_view.gd" id="5"]
 
 [sub_resource type="StyleBoxFlat" id="1"]
 content_margin_left = 8.0
@@ -120,6 +121,33 @@ border_color = Color(0.118, 0.125, 0.154, 1)
 [sub_resource type="FontVariation" id="9"]
 variation_embolden = 0.6
 
+[sub_resource type="StyleBoxFlat" id="10"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.126, 0.136, 0.169, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.225, 0.235, 0.268, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="11"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
+bg_color = Color(0.116, 0.124, 0.154, 1)
+border_width_bottom = 1
+border_color = Color(0.098, 0.105, 0.131, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
 [node name="GitVisualizer" type="Control"]
 anchors_preset = 15
 anchor_right = 1.0
@@ -140,44 +168,50 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("1")
 
-[node name="MainSplit" type="HSplitContainer" parent="OuterFrame"]
+[node name="MainTabs" type="TabContainer" parent="OuterFrame"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Overview" type="HSplitContainer" parent="OuterFrame/MainTabs"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 split_offset = 260
 
-[node name="SidebarScroll" type="ScrollContainer" parent="OuterFrame/MainSplit"]
+[node name="SidebarScroll" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview"]
 custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 horizontal_scroll_mode = 0
 
-[node name="Sidebar" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll"]
+[node name="Sidebar" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="BranchLabel" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
+[node name="BranchMenuButton" type="MenuButton" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Branch: "
 
-[node name="StagedSection" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
+[node name="StagedSection" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 2
 theme_override_styles/panel = SubResource("2")
 
-[node name="StagedBox" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection"]
+[node name="StagedBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/StagedSection"]
 layout_mode = 2
 
-[node name="StagedHeaderBar" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+[node name="StagedHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/StagedSection/StagedBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_styles/panel = SubResource("3")
 
-[node name="StagedHeader" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox/StagedHeaderBar"]
+[node name="StagedHeader" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/StagedSection/StagedBox/StagedHeaderBar"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
@@ -187,28 +221,28 @@ theme_override_constants/shadow_outline_size = 0
 theme_override_fonts/font = SubResource("9")
 text = "Staged Changes"
 
-[node name="StagedList" type="ItemList" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+[node name="StagedList" type="ItemList" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/StagedSection/StagedBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 focus_mode = 2
 auto_height = true
 
-[node name="UnstagedSection" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
+[node name="UnstagedSection" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 2
 theme_override_styles/panel = SubResource("4")
 
-[node name="UnstagedBox" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection"]
+[node name="UnstagedBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection"]
 layout_mode = 2
 
-[node name="UnstagedHeaderBar" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+[node name="UnstagedHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_styles/panel = SubResource("5")
 
-[node name="UnstagedHeader" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar"]
+[node name="UnstagedHeader" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
@@ -218,29 +252,29 @@ theme_override_constants/shadow_outline_size = 0
 theme_override_fonts/font = SubResource("9")
 text = "Unstaged Changes"
 
-[node name="UnstagedList" type="ItemList" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+[node name="UnstagedList" type="ItemList" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 focus_mode = 2
 auto_height = true
 
-[node name="HistorySection" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
+[node name="HistorySection" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("6")
 
-[node name="HistoryBox" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection"]
+[node name="HistoryBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/HistorySection"]
 layout_mode = 2
 
-[node name="HistoryHeaderBar" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+[node name="HistoryHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_styles/panel = SubResource("7")
 
-[node name="HistoryHeader" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox/HistoryHeaderBar"]
+[node name="HistoryHeader" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/HistorySection/HistoryBox/HistoryHeaderBar"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
@@ -250,27 +284,62 @@ theme_override_constants/shadow_outline_size = 0
 theme_override_fonts/font = SubResource("9")
 text = "Commit History"
 
-[node name="HistoryPreviewList" type="ItemList" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+[node name="HistoryPreviewList" type="ItemList" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 focus_mode = 2
 size_flags_vertical = 3
 
-[node name="CenterArea" type="PanelContainer" parent="OuterFrame/MainSplit"]
+[node name="CommitSection" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/panel = SubResource("10")
+
+[node name="CommitBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/CommitSection"]
+layout_mode = 2
+
+[node name="CommitHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/CommitSection/CommitBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/panel = SubResource("11")
+
+[node name="CommitHeader" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/CommitSection/CommitBox/CommitHeaderBar"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
+text = "Commit"
+
+[node name="CommitMessageEdit" type="TextEdit" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/CommitSection/CommitBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "Commit message"
+wrap_mode = 1
+
+[node name="CommitButton" type="Button" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/CommitSection/CommitBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Commit Staged Changes"
+
+[node name="CenterArea" type="PanelContainer" parent="OuterFrame/MainTabs/Overview"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("8")
 
-[node name="ViewHost" type="Control" parent="OuterFrame/MainSplit/CenterArea"]
+[node name="ViewHost" type="Control" parent="OuterFrame/MainTabs/Overview/CenterArea"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 clip_contents = true
 
-[node name="DiffView" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
+[node name="DiffView" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -280,7 +349,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2")
 
-[node name="DiffLabel" type="RichTextLabel" parent="OuterFrame/MainSplit/CenterArea/ViewHost/DiffView"]
+[node name="DiffLabel" type="RichTextLabel" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/DiffView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -288,7 +357,7 @@ bbcode_enabled = true
 fit_content = true
 selection_enabled = true
 
-[node name="StagingView" type="Control" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
+[node name="StagingView" type="Control" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -299,7 +368,7 @@ grow_vertical = 2
 visible = false
 script = ExtResource("3")
 
-[node name="StagingSplit" type="HSplitContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView"]
+[node name="StagingSplit" type="HSplitContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -307,31 +376,31 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="StagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
+[node name="StagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="StagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
+[node name="StagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 bbcode_enabled = true
-fit_content = true
 selection_enabled = true
 
-[node name="UnstagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
+[node name="UnstagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="UnstagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
+[node name="UnstagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 bbcode_enabled = true
-fit_content = true
 selection_enabled = true
 
-[node name="HistoryView" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
+[node name="HistoryView" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -341,13 +410,13 @@ grow_horizontal = 2
 grow_vertical = 2
 visible = false
 
-[node name="HistoryGraph" type="Control" parent="OuterFrame/MainSplit/CenterArea/ViewHost/HistoryView"]
+[node name="HistoryGraph" type="Control" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/HistoryView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("4")
 
-[node name="NoRepoView" type="VBoxContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
+[node name="NoRepoView" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -358,13 +427,134 @@ grow_vertical = 2
 visible = false
 alignment = 1
 
-[node name="NoRepoLabel" type="Label" parent="OuterFrame/MainSplit/CenterArea/ViewHost/NoRepoView"]
+[node name="NoRepoLabel" type="Label" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/NoRepoView"]
 layout_mode = 2
 horizontal_alignment = 1
 text = "No git repository found at or above the project root."
 
-[node name="InitRepoButton" type="Button" parent="OuterFrame/MainSplit/CenterArea/ViewHost/NoRepoView"]
+[node name="InitRepoButton" type="Button" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/NoRepoView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 text = "Initialize Repository"
+
+[node name="Branches" type="MarginContainer" parent="OuterFrame/MainTabs"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+script = ExtResource("5")
+
+[node name="BranchesRoot" type="VBoxContainer" parent="OuterFrame/MainTabs/Branches"]
+layout_mode = 2
+
+[node name="BranchesListSection" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("2")
+
+[node name="BranchesListBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection"]
+layout_mode = 2
+
+[node name="BranchesListHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="BranchesListHeader" type="Label" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox/BranchesListHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Branches"
+
+[node name="BranchesList" type="ItemList" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CheckoutSelectedButton" type="Button" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Checkout Selected Branch"
+
+[node name="CreateBranchSection" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("4")
+
+[node name="CreateBranchBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection"]
+layout_mode = 2
+
+[node name="CreateBranchHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection/CreateBranchBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("5")
+
+[node name="CreateBranchHeader" type="Label" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection/CreateBranchBox/CreateBranchHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Create Branch"
+
+[node name="CreateBranchRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection/CreateBranchBox"]
+layout_mode = 2
+
+[node name="NewBranchNameEdit" type="LineEdit" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection/CreateBranchBox/CreateBranchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "new-branch-name"
+
+[node name="CreateBranchCheckoutCheck" type="CheckBox" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection/CreateBranchBox/CreateBranchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Checkout"
+
+[node name="CreateBranchButton" type="Button" parent="OuterFrame/MainTabs/Branches/BranchesRoot/CreateBranchSection/CreateBranchBox/CreateBranchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Create"
+
+[node name="MergeSection" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("6")
+
+[node name="MergeBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection"]
+layout_mode = 2
+
+[node name="MergeHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("7")
+
+[node name="MergeHeader" type="Label" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox/MergeHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Merge / Pull Request (Local)"
+
+[node name="MergeRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox"]
+layout_mode = 2
+
+[node name="MergeFromLabel" type="Label" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox/MergeRow"]
+layout_mode = 2
+text = "Merge"
+
+[node name="SourceBranchOption" type="OptionButton" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox/MergeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MergeIntoLabel" type="Label" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox/MergeRow"]
+layout_mode = 2
+text = "into"
+
+[node name="TargetBranchOption" type="OptionButton" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox/MergeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CreatePullRequestButton" type="Button" parent="OuterFrame/MainTabs/Branches/BranchesRoot/MergeSection/MergeBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Create Pull Request (Merge)"
+
+[node name="ErrorDialog" type="AcceptDialog" parent="."]
+unique_name_in_owner = true
+title = "Git Error"
