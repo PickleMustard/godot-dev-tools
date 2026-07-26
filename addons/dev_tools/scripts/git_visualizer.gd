@@ -3,10 +3,13 @@ extends Control
 
 const MAX_HISTORY: int = 300
 const HISTORY_PREVIEW_COUNT: int = 5
+const POLL_INTERVAL_SEC: float = 2.0
 
 var git_backend: GitBackend
 var project_root: String = ""
 var repo_open: bool = false
+var _poll_timer: Timer
+var _last_signature: Dictionary = {}
 
 @onready var branch_label: Label = %BranchLabel
 @onready var staged_section: Control = %StagedSection
@@ -42,6 +45,13 @@ func _ready() -> void:
 	history_section.focus_entered.connect(_show_view.bind("HistoryView"))
 	history_preview_list.focus_entered.connect(_show_view.bind("HistoryView"))
 	init_repo_button.pressed.connect(_on_init_repo_pressed)
+
+	_poll_timer = Timer.new()
+	_poll_timer.wait_time = POLL_INTERVAL_SEC
+	_poll_timer.autostart = true
+	_poll_timer.one_shot = false
+	add_child(_poll_timer)
+	_poll_timer.timeout.connect(_on_poll_timeout)
 
 	if git_backend:
 		_refresh()
@@ -99,6 +109,29 @@ func _refresh() -> void:
 	history_graph.load_history(history)
 
 	_show_view("DiffView")
+	_last_signature = _compute_signature()
+
+
+func _on_poll_timeout() -> void:
+	if not repo_open or not is_visible_in_tree():
+		return
+	var sig := _compute_signature()
+	if sig != _last_signature:
+		_refresh()
+
+
+func _compute_signature() -> Dictionary:
+	if not repo_open:
+		return {}
+	var top_hash := ""
+	var top: Array = git_backend.get_commit_history(1)
+	if top.size() > 0:
+		top_hash = (top[0] as Dictionary).get("hash", "")
+	return {
+		"branch": git_backend.get_current_branch(),
+		"status": git_backend.get_status(),
+		"top_hash": top_hash,
+	}
 
 
 func _populate_file_list(list: ItemList, entries: Array) -> void:
