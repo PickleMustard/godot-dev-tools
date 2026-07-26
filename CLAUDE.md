@@ -24,6 +24,10 @@ No test framework is wired up yet — `tests/` exists as a placeholder. When tes
 - `addons/dev_tools/asset_pipeline/` — asset import/convert/process logic. Intended home for anything that transforms source assets (art, audio, data) into engine-ready formats.
 - `addons/dev_tools/cli/` — headless entry points invoked via `godot --headless --script`, for tooling that runs outside the editor (batch processing, CI, etc).
 
+## UI conventions
+
+Styling (StyleBoxFlat, fonts/FontVariation, colors, borders, margins) belongs in `.tscn` scene files — as node `theme_override_*` properties and `sub_resource` blocks — not in GDScript. GDScript builds behavior (signals, data population, view switching), not visual layout. Don't write `add_theme_stylebox_override` / `add_theme_font_override` / `add_theme_color_override` calls in `_ready()` or elsewhere to construct panel/label appearance; define the StyleBoxFlat/FontVariation as scene sub-resources instead.
+
 ## Consuming this addon from another project
 
 This repo is meant to be dropped into other Godot projects as `addons/dev_tools/` (via git submodule or copy — no distribution mechanism is set up yet, decide per consuming project). Only the `addons/dev_tools/` subdirectory is relevant to a consumer; the root `project.godot` and `tests/` exist solely for developing this addon in isolation.

@@ -1,9 +1,124 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_visualizer.gd" id="1"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_diff_view.gd" id="2"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_staging_view.gd" id="3"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_history_view.gd" id="4"]
+
+[sub_resource type="StyleBoxFlat" id="1"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+bg_color = Color(0.11, 0.116, 0.145, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.23, 0.24, 0.28, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 4
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="2"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.156, 0.166, 0.205, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.255, 0.265, 0.304, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="3"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
+bg_color = Color(0.144, 0.153, 0.189, 1)
+border_width_bottom = 1
+border_color = Color(0.122, 0.13, 0.16, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
+[sub_resource type="StyleBoxFlat" id="4"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.146, 0.156, 0.193, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.245, 0.255, 0.292, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="5"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
+bg_color = Color(0.134, 0.144, 0.178, 1)
+border_width_bottom = 1
+border_color = Color(0.114, 0.122, 0.151, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
+[sub_resource type="StyleBoxFlat" id="6"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.136, 0.146, 0.181, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.235, 0.245, 0.28, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="7"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
+bg_color = Color(0.125, 0.134, 0.166, 1)
+border_width_bottom = 1
+border_color = Color(0.106, 0.114, 0.141, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
+[sub_resource type="StyleBoxFlat" id="8"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.168, 0.178, 0.22, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.118, 0.125, 0.154, 1)
+
+[sub_resource type="FontVariation" id="9"]
+variation_embolden = 0.6
 
 [node name="GitVisualizer" type="Control"]
 anchors_preset = 15
@@ -15,107 +130,147 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("1")
 
-[node name="MainSplit" type="HSplitContainer" parent="."]
+[node name="OuterFrame" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_styles/panel = SubResource("1")
+
+[node name="MainSplit" type="HSplitContainer" parent="OuterFrame"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 split_offset = 260
 
-[node name="SidebarScroll" type="ScrollContainer" parent="MainSplit"]
+[node name="SidebarScroll" type="ScrollContainer" parent="OuterFrame/MainSplit"]
 custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 horizontal_scroll_mode = 0
 
-[node name="Sidebar" type="VBoxContainer" parent="MainSplit/SidebarScroll"]
+[node name="Sidebar" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="BranchLabel" type="Label" parent="MainSplit/SidebarScroll/Sidebar"]
+[node name="BranchLabel" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Branch: "
 
-[node name="StagedSection" type="PanelContainer" parent="MainSplit/SidebarScroll/Sidebar"]
+[node name="StagedSection" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 2
+theme_override_styles/panel = SubResource("2")
 
-[node name="StagedBox" type="VBoxContainer" parent="MainSplit/SidebarScroll/Sidebar/StagedSection"]
+[node name="StagedBox" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection"]
 layout_mode = 2
 
-[node name="StagedHeader" type="Label" parent="MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+[node name="StagedHeaderBar" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="StagedHeader" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox/StagedHeaderBar"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
 text = "Staged Changes"
 
-[node name="StagedList" type="ItemList" parent="MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+[node name="StagedList" type="ItemList" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 focus_mode = 2
 auto_height = true
 
-[node name="UnstagedSection" type="PanelContainer" parent="MainSplit/SidebarScroll/Sidebar"]
+[node name="UnstagedSection" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 2
+theme_override_styles/panel = SubResource("4")
 
-[node name="UnstagedBox" type="VBoxContainer" parent="MainSplit/SidebarScroll/Sidebar/UnstagedSection"]
+[node name="UnstagedBox" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection"]
 layout_mode = 2
 
-[node name="UnstagedHeader" type="Label" parent="MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+[node name="UnstagedHeaderBar" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/panel = SubResource("5")
+
+[node name="UnstagedHeader" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
 text = "Unstaged Changes"
 
-[node name="UnstagedList" type="ItemList" parent="MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+[node name="UnstagedList" type="ItemList" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 focus_mode = 2
 auto_height = true
 
-[node name="HistorySection" type="PanelContainer" parent="MainSplit/SidebarScroll/Sidebar"]
+[node name="HistorySection" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 2
 size_flags_vertical = 3
+theme_override_styles/panel = SubResource("6")
 
-[node name="HistoryBox" type="VBoxContainer" parent="MainSplit/SidebarScroll/Sidebar/HistorySection"]
+[node name="HistoryBox" type="VBoxContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection"]
 layout_mode = 2
 
-[node name="HistoryHeader" type="Label" parent="MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+[node name="HistoryHeaderBar" type="PanelContainer" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/panel = SubResource("7")
+
+[node name="HistoryHeader" type="Label" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox/HistoryHeaderBar"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
 text = "Commit History"
 
-[node name="HistoryPreviewList" type="ItemList" parent="MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+[node name="HistoryPreviewList" type="ItemList" parent="OuterFrame/MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 focus_mode = 2
 size_flags_vertical = 3
 
-[node name="CenterArea" type="PanelContainer" parent="MainSplit"]
+[node name="CenterArea" type="PanelContainer" parent="OuterFrame/MainSplit"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("8")
 
-[node name="ViewHost" type="Control" parent="MainSplit/CenterArea"]
+[node name="ViewHost" type="Control" parent="OuterFrame/MainSplit/CenterArea"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 clip_contents = true
 
-[node name="DiffView" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost"]
+[node name="DiffView" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -125,7 +280,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2")
 
-[node name="DiffLabel" type="RichTextLabel" parent="MainSplit/CenterArea/ViewHost/DiffView"]
+[node name="DiffLabel" type="RichTextLabel" parent="OuterFrame/MainSplit/CenterArea/ViewHost/DiffView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -133,7 +288,7 @@ bbcode_enabled = true
 fit_content = true
 selection_enabled = true
 
-[node name="StagingView" type="Control" parent="MainSplit/CenterArea/ViewHost"]
+[node name="StagingView" type="Control" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -144,7 +299,7 @@ grow_vertical = 2
 visible = false
 script = ExtResource("3")
 
-[node name="StagingSplit" type="HSplitContainer" parent="MainSplit/CenterArea/ViewHost/StagingView"]
+[node name="StagingSplit" type="HSplitContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -152,11 +307,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="StagedDiffScroll" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
+[node name="StagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="StagedDiffLabel" type="RichTextLabel" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
+[node name="StagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -164,11 +319,11 @@ bbcode_enabled = true
 fit_content = true
 selection_enabled = true
 
-[node name="UnstagedDiffScroll" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
+[node name="UnstagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="UnstagedDiffLabel" type="RichTextLabel" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
+[node name="UnstagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -176,7 +331,7 @@ bbcode_enabled = true
 fit_content = true
 selection_enabled = true
 
-[node name="HistoryView" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost"]
+[node name="HistoryView" type="ScrollContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -186,13 +341,13 @@ grow_horizontal = 2
 grow_vertical = 2
 visible = false
 
-[node name="HistoryGraph" type="Control" parent="MainSplit/CenterArea/ViewHost/HistoryView"]
+[node name="HistoryGraph" type="Control" parent="OuterFrame/MainSplit/CenterArea/ViewHost/HistoryView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("4")
 
-[node name="NoRepoView" type="VBoxContainer" parent="MainSplit/CenterArea/ViewHost"]
+[node name="NoRepoView" type="VBoxContainer" parent="OuterFrame/MainSplit/CenterArea/ViewHost"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -203,12 +358,12 @@ grow_vertical = 2
 visible = false
 alignment = 1
 
-[node name="NoRepoLabel" type="Label" parent="MainSplit/CenterArea/ViewHost/NoRepoView"]
+[node name="NoRepoLabel" type="Label" parent="OuterFrame/MainSplit/CenterArea/ViewHost/NoRepoView"]
 layout_mode = 2
 horizontal_alignment = 1
 text = "No git repository found at or above the project root."
 
-[node name="InitRepoButton" type="Button" parent="MainSplit/CenterArea/ViewHost/NoRepoView"]
+[node name="InitRepoButton" type="Button" parent="OuterFrame/MainSplit/CenterArea/ViewHost/NoRepoView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
