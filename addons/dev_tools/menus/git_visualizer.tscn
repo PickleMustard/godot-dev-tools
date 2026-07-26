@@ -1,10 +1,12 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_visualizer.gd" id="1"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_diff_view.gd" id="2"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_staging_view.gd" id="3"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_history_view.gd" id="4"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_branches_view.gd" id="5"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_side_by_side_view.gd" id="6"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_file_list.gd" id="7"]
 
 [sub_resource type="StyleBoxFlat" id="1"]
 content_margin_left = 8.0
@@ -221,12 +223,10 @@ theme_override_constants/shadow_outline_size = 0
 theme_override_fonts/font = SubResource("9")
 text = "Staged Changes"
 
-[node name="StagedList" type="ItemList" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+[node name="StagedList" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/StagedSection/StagedBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
-focus_mode = 2
-auto_height = true
 
 [node name="UnstagedSection" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
@@ -252,12 +252,10 @@ theme_override_constants/shadow_outline_size = 0
 theme_override_fonts/font = SubResource("9")
 text = "Unstaged Changes"
 
-[node name="UnstagedList" type="ItemList" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+[node name="UnstagedList" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
-focus_mode = 2
-auto_height = true
 
 [node name="HistorySection" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
@@ -349,13 +347,11 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2")
 
-[node name="DiffLabel" type="RichTextLabel" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/DiffView"]
+[node name="DiffFileList" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/DiffView"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-bbcode_enabled = true
-fit_content = true
-selection_enabled = true
+script = ExtResource("7")
 
 [node name="StagingView" type="Control" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
 unique_name_in_owner = true
@@ -380,25 +376,23 @@ grow_vertical = 2
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="StagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
+[node name="StagedFileList" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-bbcode_enabled = true
-selection_enabled = true
+script = ExtResource("7")
 
 [node name="UnstagedDiffScroll" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="UnstagedDiffLabel" type="RichTextLabel" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
+[node name="UnstagedFileList" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-bbcode_enabled = true
-selection_enabled = true
+script = ExtResource("7")
 
 [node name="HistoryView" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
 unique_name_in_owner = true
@@ -437,6 +431,40 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 text = "Initialize Repository"
+
+[node name="FileDetailView" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+script = ExtResource("6")
+
+[node name="TopBar" type="HBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/FileDetailView"]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/FileDetailView/TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "‹ Back"
+
+[node name="TitleLabel" type="Label" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/FileDetailView/TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "path"
+
+[node name="RowsScroll" type="ScrollContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/FileDetailView"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RowsContainer" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/CenterArea/ViewHost/FileDetailView/RowsScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="Branches" type="MarginContainer" parent="OuterFrame/MainTabs"]
 unique_name_in_owner = true

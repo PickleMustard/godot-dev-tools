@@ -156,6 +156,8 @@ void GitBackend::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("create_branch", "name", "checkout_after"), &GitBackend::create_branch);
 	ClassDB::bind_method(D_METHOD("merge_branch", "source", "target"), &GitBackend::merge_branch);
 	ClassDB::bind_method(D_METHOD("commit_staged", "message"), &GitBackend::commit_staged);
+	ClassDB::bind_method(D_METHOD("stage_file", "path"), &GitBackend::stage_file);
+	ClassDB::bind_method(D_METHOD("unstage_file", "path"), &GitBackend::unstage_file);
 }
 
 GitBackend::GitBackend() {
@@ -971,6 +973,85 @@ bool GitBackend::commit_staged(const String &message) const {
 	if (rc != 0) {
 		const git_error *err = git_error_last();
 		UtilityFunctions::push_warning("GitBackend: commit failed: ", (err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
+}
+
+bool GitBackend::stage_file(const String &path) const {
+	if (!repo) {
+		return false;
+	}
+
+	git_index *index = nullptr;
+	if (git_repository_index(&index, repo) != 0) {
+		return false;
+	}
+
+	CharString utf8_path = path.utf8();
+	int rc = git_index_add_bypath(index, utf8_path.get_data());
+	if (rc != 0) {
+		// Path doesn't exist on disk — this is a staged deletion, not an add/modify.
+		rc = git_index_remove_bypath(index, utf8_path.get_data());
+	}
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to stage '", path, "': ", (err && err->message) ? err->message : "unknown error");
+		git_index_free(index);
+		return false;
+	}
+
+	rc = git_index_write(index);
+	git_index_free(index);
+	if (rc != 0) {
+		UtilityFunctions::push_warning("GitBackend: failed to write index after staging '", path, "'.");
+		return false;
+	}
+	return true;
+}
+
+bool GitBackend::unstage_file(const String &path) const {
+	if (!repo) {
+		return false;
+	}
+
+	CharString utf8_path = path.utf8();
+	char *path_cstr = const_cast<char *>(utf8_path.get_data());
+	git_strarray pathspec;
+	pathspec.strings = &path_cstr;
+	pathspec.count = 1;
+
+	if (git_repository_head_unborn(repo) == 1) {
+		// No HEAD commit to reset to yet — unstaging just drops the index entry.
+		git_index *index = nullptr;
+		if (git_repository_index(&index, repo) != 0) {
+			return false;
+		}
+		int rc = git_index_remove_bypath(index, utf8_path.get_data());
+		if (rc == 0) {
+			rc = git_index_write(index);
+		}
+		git_index_free(index);
+		return rc == 0;
+	}
+
+	git_reference *head_ref = nullptr;
+	if (git_repository_head(&head_ref, repo) != 0) {
+		return false;
+	}
+
+	git_object *head_obj = nullptr;
+	if (git_reference_peel(&head_obj, head_ref, GIT_OBJECT_COMMIT) != 0 || !head_obj) {
+		git_reference_free(head_ref);
+		return false;
+	}
+	git_reference_free(head_ref);
+
+	int rc = git_reset_default(repo, head_obj, &pathspec);
+	git_object_free(head_obj);
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to unstage '", path, "': ", (err && err->message) ? err->message : "unknown error");
 		return false;
 	}
 	return true;

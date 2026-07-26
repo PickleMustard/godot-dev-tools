@@ -46,6 +46,8 @@ public:
 	bool create_branch(const String &name, bool checkout_after);
 	int merge_branch(const String &source, const String &target);
 	bool commit_staged(const String &message) const;
+	bool stage_file(const String &path) const;
+	bool unstage_file(const String &path) const;
 };
 
 } // namespace godot

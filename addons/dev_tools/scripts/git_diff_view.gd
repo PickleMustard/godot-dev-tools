@@ -1,24 +1,18 @@
 @tool
 extends ScrollContainer
 
-@onready var label: RichTextLabel = %DiffLabel
+signal file_selected(path: String)
+
+@onready var file_list: GitFileList = %DiffFileList
 
 
 func _ready() -> void:
-	label.bbcode_enabled = true
-	_apply_monospace_font(label)
+	file_list.file_selected.connect(func(path: String) -> void: file_selected.emit(path))
 
 
 func load_diff(files: Array) -> void:
-	label.text = GitDiffFormat.format_files(files)
+	file_list.load_files(files, GitFilePanel.ActionMode.NONE)
 
 
-func _apply_monospace_font(rich_label: RichTextLabel) -> void:
-	if not Engine.is_editor_hint():
-		return
-	var editor_theme := EditorInterface.get_editor_theme()
-	if editor_theme and editor_theme.has_font("source", "EditorFonts"):
-		var font := editor_theme.get_font("source", "EditorFonts")
-		rich_label.add_theme_font_override("normal_font", font)
-		rich_label.add_theme_font_override("bold_font", font)
-		rich_label.add_theme_font_override("mono_font", font)
+func get_hunks_for(path: String) -> Array:
+	return file_list.get_hunks_for(path)

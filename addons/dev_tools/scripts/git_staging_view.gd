@@ -1,28 +1,28 @@
 @tool
 extends Control
 
-@onready var staged_label: RichTextLabel = %StagedDiffLabel
-@onready var unstaged_label: RichTextLabel = %UnstagedDiffLabel
+signal file_selected(path: String)
+signal stage_requested(path: String)
+signal unstage_requested(path: String)
+
+@onready var staged_list: GitFileList = %StagedFileList
+@onready var unstaged_list: GitFileList = %UnstagedFileList
 
 
 func _ready() -> void:
-	staged_label.bbcode_enabled = true
-	unstaged_label.bbcode_enabled = true
-	_apply_monospace_font(staged_label)
-	_apply_monospace_font(unstaged_label)
+	staged_list.file_selected.connect(func(path: String) -> void: file_selected.emit(path))
+	staged_list.unstage_requested.connect(func(path: String) -> void: unstage_requested.emit(path))
+	unstaged_list.file_selected.connect(func(path: String) -> void: file_selected.emit(path))
+	unstaged_list.stage_requested.connect(func(path: String) -> void: stage_requested.emit(path))
 
 
 func load_diffs(staged_files: Array, unstaged_files: Array) -> void:
-	staged_label.text = GitDiffFormat.format_files(staged_files)
-	unstaged_label.text = GitDiffFormat.format_files(unstaged_files)
+	staged_list.load_files(staged_files, GitFilePanel.ActionMode.UNSTAGE)
+	unstaged_list.load_files(unstaged_files, GitFilePanel.ActionMode.STAGE)
 
 
-func _apply_monospace_font(rich_label: RichTextLabel) -> void:
-	if not Engine.is_editor_hint():
-		return
-	var editor_theme := EditorInterface.get_editor_theme()
-	if editor_theme and editor_theme.has_font("source", "EditorFonts"):
-		var font := editor_theme.get_font("source", "EditorFonts")
-		rich_label.add_theme_font_override("normal_font", font)
-		rich_label.add_theme_font_override("bold_font", font)
-		rich_label.add_theme_font_override("mono_font", font)
+func get_hunks_for(path: String) -> Array:
+	var hunks: Array = staged_list.get_hunks_for(path)
+	if hunks.is_empty():
+		hunks = unstaged_list.get_hunks_for(path)
+	return hunks

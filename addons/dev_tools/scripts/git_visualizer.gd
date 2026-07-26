@@ -5,6 +5,7 @@ const MAX_HISTORY: int = 300
 const HISTORY_PREVIEW_COUNT: int = 5
 const POLL_INTERVAL_SEC: float = 2.0
 const BRANCH_MENU_CREATE_ID: int = 1 << 20
+const GitStatusRowScene = preload("res://addons/dev_tools/menus/git_status_row.tscn")
 
 var git_backend: GitBackend
 var project_root: String = ""
@@ -13,13 +14,14 @@ var _poll_timer: Timer
 var _last_signature: Dictionary = {}
 var _branch_menu_names: PackedStringArray = []
 var _initial_refresh_pending: bool = false
+var _previous_view_name: String = "DiffView"
 
 @onready var main_tabs: TabContainer = %MainTabs
 @onready var branch_menu_button: MenuButton = %BranchMenuButton
 @onready var staged_section: Control = %StagedSection
-@onready var staged_list: ItemList = %StagedList
+@onready var staged_list: VBoxContainer = %StagedList
 @onready var unstaged_section: Control = %UnstagedSection
-@onready var unstaged_list: ItemList = %UnstagedList
+@onready var unstaged_list: VBoxContainer = %UnstagedList
 @onready var history_section: Control = %HistorySection
 @onready var history_preview_list: ItemList = %HistoryPreviewList
 @onready var commit_message_edit: TextEdit = %CommitMessageEdit
@@ -34,6 +36,7 @@ var _initial_refresh_pending: bool = false
 @onready var history_graph = %HistoryGraph
 @onready var no_repo_view: Control = %NoRepoView
 @onready var init_repo_button: Button = %InitRepoButton
+@onready var file_detail_view = %FileDetailView
 
 
 func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
@@ -46,9 +49,7 @@ func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
 
 func _ready() -> void:
 	staged_section.focus_entered.connect(_show_view.bind("StagingView"))
-	staged_list.focus_entered.connect(_show_view.bind("StagingView"))
 	unstaged_section.focus_entered.connect(_show_view.bind("StagingView"))
-	unstaged_list.focus_entered.connect(_show_view.bind("StagingView"))
 	history_section.focus_entered.connect(_show_view.bind("HistoryView"))
 	history_preview_list.focus_entered.connect(_show_view.bind("HistoryView"))
 	init_repo_button.pressed.connect(_on_init_repo_pressed)
@@ -58,6 +59,12 @@ func _ready() -> void:
 	branches_view.checkout_requested.connect(_checkout_branch)
 	branches_view.create_branch_requested.connect(_on_create_branch_requested)
 	branches_view.merge_requested.connect(_on_merge_requested)
+
+	diff_view.file_selected.connect(_on_diff_file_selected)
+	staging_view.file_selected.connect(_on_staging_file_selected)
+	staging_view.stage_requested.connect(_on_stage_requested)
+	staging_view.unstage_requested.connect(_on_unstage_requested)
+	file_detail_view.back_requested.connect(_on_file_detail_back)
 
 	_poll_timer = Timer.new()
 	_poll_timer.wait_time = POLL_INTERVAL_SEC
@@ -94,12 +101,12 @@ func _refresh() -> void:
 	branches_view.load_branches(branches)
 
 	var status: Dictionary = git_backend.get_status()
-	_populate_file_list(staged_list, status.get("staged", []))
+	_populate_file_list(staged_list, status.get("staged", []), GitStatusRow.ActionMode.UNSTAGE)
 
 	var unstaged_combined: Array = []
 	unstaged_combined.append_array(status.get("unstaged", []))
 	unstaged_combined.append_array(status.get("untracked", []))
-	_populate_file_list(unstaged_list, unstaged_combined)
+	_populate_file_list(unstaged_list, unstaged_combined, GitStatusRow.ActionMode.STAGE)
 
 	var history: Array = git_backend.get_commit_history(MAX_HISTORY)
 	_populate_history_preview(history)
@@ -108,7 +115,10 @@ func _refresh() -> void:
 	staging_view.load_diffs(git_backend.get_staged_diff(), git_backend.get_unstaged_diff())
 	history_graph.load_history(history)
 
-	_show_view("DiffView")
+	var current_view := _get_current_view_name()
+	if current_view.is_empty() or current_view == "NoRepoView":
+		current_view = "DiffView"
+	_show_view(current_view)
 
 	var top_hash := ""
 	if history.size() > 0:
@@ -140,11 +150,64 @@ func _compute_poll_signature() -> Dictionary:
 	}
 
 
-func _populate_file_list(list: ItemList, entries: Array) -> void:
-	list.clear()
+func _populate_file_list(list: VBoxContainer, entries: Array, mode: int) -> void:
+	for child in list.get_children():
+		child.queue_free()
 	for entry in entries:
 		var e: Dictionary = entry
-		list.add_item("[%s] %s" % [e.get("status", ""), e.get("path", "")])
+		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		list.add_child(row)
+		row.load_entry(e.get("path", ""), e.get("status", ""), mode)
+		row.file_selected.connect(_on_sidebar_file_selected)
+		row.stage_requested.connect(_on_stage_requested)
+		row.unstage_requested.connect(_on_unstage_requested)
+
+
+func _on_sidebar_file_selected(path: String) -> void:
+	_open_file_detail(path, staging_view.get_hunks_for(path), "StagingView")
+
+
+func _on_diff_file_selected(path: String) -> void:
+	_open_file_detail(path, diff_view.get_hunks_for(path), "DiffView")
+
+
+func _on_staging_file_selected(path: String) -> void:
+	_open_file_detail(path, staging_view.get_hunks_for(path), "StagingView")
+
+
+func _open_file_detail(path: String, hunks: Array, return_view: String) -> void:
+	_previous_view_name = return_view
+	file_detail_view.load_file(path, hunks)
+	_show_view("FileDetailView")
+
+
+func _on_file_detail_back() -> void:
+	_show_view(_previous_view_name)
+
+
+func _on_stage_requested(path: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.stage_file(path):
+		_leave_file_detail_if_showing()
+		_refresh()
+	else:
+		_show_error("Could not stage '%s'." % path)
+
+
+func _on_unstage_requested(path: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.unstage_file(path):
+		_leave_file_detail_if_showing()
+		_refresh()
+	else:
+		_show_error("Could not unstage '%s'." % path)
+
+
+func _leave_file_detail_if_showing() -> void:
+	if _get_current_view_name() == "FileDetailView":
+		_show_view(_previous_view_name)
 
 
 func _populate_history_preview(history: Array) -> void:
@@ -158,6 +221,13 @@ func _populate_history_preview(history: Array) -> void:
 func _show_view(view_name: String) -> void:
 	for child in view_host.get_children():
 		child.visible = (child.name == view_name)
+
+
+func _get_current_view_name() -> String:
+	for child in view_host.get_children():
+		if child.visible:
+			return child.name
+	return ""
 
 
 func _on_init_repo_pressed() -> void:
