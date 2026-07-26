@@ -1,0 +1,215 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_visualizer.gd" id="1"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_diff_view.gd" id="2"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_staging_view.gd" id="3"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_history_view.gd" id="4"]
+
+[node name="GitVisualizer" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1")
+
+[node name="MainSplit" type="HSplitContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+split_offset = 260
+
+[node name="SidebarScroll" type="ScrollContainer" parent="MainSplit"]
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+horizontal_scroll_mode = 0
+
+[node name="Sidebar" type="VBoxContainer" parent="MainSplit/SidebarScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BranchLabel" type="Label" parent="MainSplit/SidebarScroll/Sidebar"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Branch: "
+
+[node name="StagedSection" type="PanelContainer" parent="MainSplit/SidebarScroll/Sidebar"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 2
+
+[node name="StagedBox" type="VBoxContainer" parent="MainSplit/SidebarScroll/Sidebar/StagedSection"]
+layout_mode = 2
+
+[node name="StagedHeader" type="Label" parent="MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+layout_mode = 2
+text = "Staged Changes"
+
+[node name="StagedList" type="ItemList" parent="MainSplit/SidebarScroll/Sidebar/StagedSection/StagedBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+focus_mode = 2
+auto_height = true
+
+[node name="UnstagedSection" type="PanelContainer" parent="MainSplit/SidebarScroll/Sidebar"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 2
+
+[node name="UnstagedBox" type="VBoxContainer" parent="MainSplit/SidebarScroll/Sidebar/UnstagedSection"]
+layout_mode = 2
+
+[node name="UnstagedHeader" type="Label" parent="MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+layout_mode = 2
+text = "Unstaged Changes"
+
+[node name="UnstagedList" type="ItemList" parent="MainSplit/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+focus_mode = 2
+auto_height = true
+
+[node name="HistorySection" type="PanelContainer" parent="MainSplit/SidebarScroll/Sidebar"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 2
+size_flags_vertical = 3
+
+[node name="HistoryBox" type="VBoxContainer" parent="MainSplit/SidebarScroll/Sidebar/HistorySection"]
+layout_mode = 2
+
+[node name="HistoryHeader" type="Label" parent="MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+layout_mode = 2
+text = "Commit History"
+
+[node name="HistoryPreviewList" type="ItemList" parent="MainSplit/SidebarScroll/Sidebar/HistorySection/HistoryBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+focus_mode = 2
+size_flags_vertical = 3
+
+[node name="CenterArea" type="PanelContainer" parent="MainSplit"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ViewHost" type="Control" parent="MainSplit/CenterArea"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+clip_contents = true
+
+[node name="DiffView" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("2")
+
+[node name="DiffLabel" type="RichTextLabel" parent="MainSplit/CenterArea/ViewHost/DiffView"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+selection_enabled = true
+
+[node name="StagingView" type="Control" parent="MainSplit/CenterArea/ViewHost"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+script = ExtResource("3")
+
+[node name="StagingSplit" type="HSplitContainer" parent="MainSplit/CenterArea/ViewHost/StagingView"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="StagedDiffScroll" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StagedDiffLabel" type="RichTextLabel" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/StagedDiffScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+selection_enabled = true
+
+[node name="UnstagedDiffScroll" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="UnstagedDiffLabel" type="RichTextLabel" parent="MainSplit/CenterArea/ViewHost/StagingView/StagingSplit/UnstagedDiffScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+selection_enabled = true
+
+[node name="HistoryView" type="ScrollContainer" parent="MainSplit/CenterArea/ViewHost"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+
+[node name="HistoryGraph" type="Control" parent="MainSplit/CenterArea/ViewHost/HistoryView"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+script = ExtResource("4")
+
+[node name="NoRepoView" type="VBoxContainer" parent="MainSplit/CenterArea/ViewHost"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+alignment = 1
+
+[node name="NoRepoLabel" type="Label" parent="MainSplit/CenterArea/ViewHost/NoRepoView"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "No git repository found at or above the project root."
+
+[node name="InitRepoButton" type="Button" parent="MainSplit/CenterArea/ViewHost/NoRepoView"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Initialize Repository"

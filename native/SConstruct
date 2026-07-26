@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+
+import subprocess
+
+# Fedora (and some other distros) don't ship a static libstdc++, so
+# godot-cpp's default static-linking-for-portability behavior fails to
+# find it at link time. Default it off here; still overridable on the
+# command line with use_static_cpp=yes.
+ARGUMENTS.setdefault("use_static_cpp", "no")
+
+env = SConscript("godot-cpp/SConstruct")
+
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp") + Glob("src/git/*.cpp")
+
+
+def pkg_config_exists(package: str) -> bool:
+    try:
+        subprocess.run(["pkg-config", "--exists", package], check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+if not pkg_config_exists("libgit2"):
+    raise UserError(
+        "libgit2 not found via pkg-config. Install the libgit2 development "
+        "package first (e.g. `sudo dnf install libgit2-devel` on Fedora, "
+        "`sudo apt install libgit2-dev` on Debian/Ubuntu)."
+    )
+
+env.ParseConfig("pkg-config --cflags --libs libgit2")
+
+library = env.SharedLibrary(
+    "../addons/dev_tools/bin/linux/libgit_backend{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),
+    source=sources,
+)
+
+env.NoCache(library)
+Default(library)

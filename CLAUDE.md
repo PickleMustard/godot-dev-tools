@@ -8,12 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- **Open in editor**: `godot4 --editor --path .` (or open `project.godot` from the Godot editor's project manager). Enable the plugin under Project Settings > Plugins if it isn't already active.
-- **Run a headless script**: `godot4 --headless --path . --script res://addons/dev_tools/cli/<script_name>.gd`
-- **Check for script errors without opening the editor UI**: `godot4 --headless --path . --check-only`
+On this machine the Godot binary is installed as `godot-limbo` (a Godot 4.6 build bundled with the LimboAI plugin), not `godot4` — use `godot-limbo` in place of `godot4` below.
+
+- **Open in editor**: `godot-limbo --editor --path .` (or open `project.godot` from the Godot editor's project manager). Enable the plugin under Project Settings > Plugins if it isn't already active.
+- **Run a headless script**: `godot-limbo --headless --path . --script res://addons/dev_tools/cli/<script_name>.gd`
+- **Check for script errors without opening the editor UI**: `godot-limbo --headless --path . --check-only --script res://addons/dev_tools/plugin.gd` (`--check-only` requires `--script`; it won't run standalone or with `--editor`)
 
 No test framework is wired up yet — `tests/` exists as a placeholder. When tests are added (GUT is the Godot ecosystem standard), they'll run via something like:
-`godot4 --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -gexit`
+`godot-limbo --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -gexit`
 
 ## Architecture
 

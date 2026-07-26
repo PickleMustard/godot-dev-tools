@@ -1,0 +1,16 @@
+[configuration]
+
+entry_symbol = "git_backend_library_init"
+compatibility_minimum = "4.5"
+
+[libraries]
+
+linux.debug.x86_64 = "res://addons/dev_tools/bin/linux/libgit_backend.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://addons/dev_tools/bin/linux/libgit_backend.linux.template_release.x86_64.so"
+
+[dependencies]
+
+; System libgit2 is dynamically linked and NOT bundled here — the machine
+; running the editor must have libgit2 installed (e.g. `libgit2-devel` on
+; Fedora, `libgit2-dev` on Debian/Ubuntu). Windows/macOS entries and a
+; vendored/static libgit2 build are future work.
