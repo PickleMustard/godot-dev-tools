@@ -194,36 +194,6 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="RemoteToolbar" type="HBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="FetchButton" type="Button" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/RemoteToolbar"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Fetch"
-
-[node name="PullButtonRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/RemoteToolbar"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="PullButton" type="Button" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/RemoteToolbar/PullButtonRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Pull"
-
-[node name="PullIndicator" type="TextureRect" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/RemoteToolbar/PullButtonRow"]
-unique_name_in_owner = true
-layout_mode = 2
-custom_minimum_size = Vector2(16, 16)
-size_flags_vertical = 4
-modulate = Color(0.298039, 0.788235, 0.4, 1)
-expand_mode = 1
-stretch_mode = 5
-visible = false
-
 [node name="BranchMenuButton" type="MenuButton" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -272,25 +242,15 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_styles/panel = SubResource("5")
 
-[node name="UnstagedHeaderRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar"]
-layout_mode = 2
-
-[node name="UnstagedHeader" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar/UnstagedHeaderRow"]
+[node name="UnstagedHeader" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 theme_override_constants/shadow_outline_size = 0
 theme_override_fonts/font = SubResource("9")
 text = "Unstaged Changes"
-
-[node name="StageAllButton" type="Button" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox/UnstagedHeaderBar/UnstagedHeaderRow"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Stage all unstaged changes"
-text = "+"
 
 [node name="UnstagedList" type="VBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/UnstagedSection/UnstagedBox"]
 unique_name_in_owner = true
@@ -626,9 +586,3 @@ text = "Create Pull Request (Merge)"
 [node name="ErrorDialog" type="AcceptDialog" parent="."]
 unique_name_in_owner = true
 title = "Git Error"
-
-[node name="PullGateDialog" type="ConfirmationDialog" parent="."]
-unique_name_in_owner = true
-title = "Behind Remote"
-ok_button_text = "Pull"
-dialog_text = "Your branch is behind the remote. Pull the latest changes before committing?"

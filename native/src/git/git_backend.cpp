@@ -1,9 +1,6 @@
 #include "git_backend.h"
 
 #include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/core/mutex_lock.hpp>
-#include <godot_cpp/variant/callable.hpp>
-#include <godot_cpp/variant/callable_method_pointer.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
@@ -161,30 +158,12 @@ void GitBackend::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("commit_staged", "message"), &GitBackend::commit_staged);
 	ClassDB::bind_method(D_METHOD("stage_file", "path"), &GitBackend::stage_file);
 	ClassDB::bind_method(D_METHOD("unstage_file", "path"), &GitBackend::unstage_file);
-
-	ClassDB::bind_method(D_METHOD("get_ahead_behind", "remote_name"), &GitBackend::get_ahead_behind, DEFVAL(String("origin")));
-	ClassDB::bind_method(D_METHOD("start_fetch", "remote_name"), &GitBackend::start_fetch, DEFVAL(String("origin")));
-	ClassDB::bind_method(D_METHOD("start_pull", "remote_name"), &GitBackend::start_pull, DEFVAL(String("origin")));
-	ClassDB::bind_method(D_METHOD("is_remote_op_busy"), &GitBackend::is_remote_op_busy);
-
-	ADD_SIGNAL(MethodInfo("fetch_finished",
-			PropertyInfo(Variant::BOOL, "ok"),
-			PropertyInfo(Variant::STRING, "error_message")));
-	ADD_SIGNAL(MethodInfo("pull_finished",
-			PropertyInfo(Variant::BOOL, "ok"),
-			PropertyInfo(Variant::STRING, "error_message"),
-			PropertyInfo(Variant::INT, "merge_result")));
 }
 
 GitBackend::GitBackend() {
-	repo_mutex.instantiate();
 }
 
 GitBackend::~GitBackend() {
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		bg_thread->wait_to_finish();
-	}
-	MutexLock lock(**repo_mutex);
 	close_repository();
 }
 
@@ -196,10 +175,6 @@ void GitBackend::close_repository() {
 }
 
 bool GitBackend::open_repository(const String &path) {
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		bg_thread->wait_to_finish();
-	}
-	MutexLock lock(**repo_mutex);
 	close_repository();
 
 	CharString utf8_path = path.utf8();
@@ -214,10 +189,6 @@ bool GitBackend::open_repository(const String &path) {
 }
 
 bool GitBackend::init_repository(const String &path) {
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		bg_thread->wait_to_finish();
-	}
-	MutexLock lock(**repo_mutex);
 	close_repository();
 
 	CharString utf8_path = path.utf8();
@@ -255,7 +226,6 @@ git_tree *GitBackend::resolve_head_tree() const {
 }
 
 String GitBackend::get_current_branch() const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return String("");
 	}
@@ -301,7 +271,6 @@ String GitBackend::get_current_branch() const {
 }
 
 String GitBackend::get_head_oid_hex() const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return String("");
 	}
@@ -313,7 +282,6 @@ String GitBackend::get_head_oid_hex() const {
 }
 
 Dictionary GitBackend::get_status() const {
-	MutexLock lock(**repo_mutex);
 	Dictionary result;
 	Array staged;
 	Array unstaged;
@@ -391,7 +359,6 @@ TypedArray<Dictionary> GitBackend::diff_to_array(git_diff *diff) const {
 }
 
 TypedArray<Dictionary> GitBackend::get_diff_head() const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return TypedArray<Dictionary>();
 	}
@@ -414,7 +381,6 @@ TypedArray<Dictionary> GitBackend::get_diff_head() const {
 }
 
 TypedArray<Dictionary> GitBackend::get_staged_diff() const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return TypedArray<Dictionary>();
 	}
@@ -437,7 +403,6 @@ TypedArray<Dictionary> GitBackend::get_staged_diff() const {
 }
 
 TypedArray<Dictionary> GitBackend::get_unstaged_diff() const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return TypedArray<Dictionary>();
 	}
@@ -455,7 +420,6 @@ TypedArray<Dictionary> GitBackend::get_unstaged_diff() const {
 }
 
 TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool include_refs) const {
-	MutexLock lock(**repo_mutex);
 	TypedArray<Dictionary> result;
 	if (!repo || max_count <= 0) {
 		return result;
@@ -718,7 +682,6 @@ String GitBackend::get_current_branch_raw_name() const {
 }
 
 TypedArray<Dictionary> GitBackend::list_branches() const {
-	MutexLock lock(**repo_mutex);
 	TypedArray<Dictionary> result;
 	if (!repo) {
 		return result;
@@ -756,7 +719,6 @@ TypedArray<Dictionary> GitBackend::list_branches() const {
 }
 
 bool GitBackend::checkout_branch(const String &name) {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -801,7 +763,6 @@ bool GitBackend::checkout_branch(const String &name) {
 }
 
 bool GitBackend::create_branch(const String &name, bool checkout_after) {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -841,7 +802,6 @@ bool GitBackend::create_branch(const String &name, bool checkout_after) {
 }
 
 int GitBackend::merge_branch(const String &source, const String &target) {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return -1;
 	}
@@ -864,26 +824,19 @@ int GitBackend::merge_branch(const String &source, const String &target) {
 		return -1;
 	}
 
-	int result = merge_annotated_into_current(source, their_head, target, nullptr);
-
-	git_annotated_commit_free(their_head);
-	git_reference_free(source_ref);
-	return result;
-}
-
-int GitBackend::merge_annotated_into_current(const String &source_display_name, git_annotated_commit *their_head,
-		const String &target, String *out_error_message) {
 	git_merge_analysis_t analysis;
 	git_merge_preference_t preference;
 	const git_annotated_commit *heads[1] = { their_head };
 	if (git_merge_analysis(&analysis, &preference, repo, heads, 1) != 0) {
+		git_annotated_commit_free(their_head);
+		git_reference_free(source_ref);
 		return -1;
 	}
 
 	int result = -1;
 
 	if (analysis & GIT_MERGE_ANALYSIS_UP_TO_DATE) {
-		UtilityFunctions::push_warning("GitBackend: '", target, "' already contains all commits from '", source_display_name, "'; nothing to merge.");
+		UtilityFunctions::push_warning("GitBackend: '", target, "' already contains all commits from '", source, "'; nothing to merge.");
 		result = 1;
 	} else if (analysis & GIT_MERGE_ANALYSIS_FASTFORWARD) {
 		git_reference *target_ref = lookup_branch_ref(target);
@@ -909,11 +862,7 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 			result = 0;
 		} else {
 			const git_error *err = git_error_last();
-			String msg = (err && err->message) ? String::utf8(err->message) : String("unknown error");
-			UtilityFunctions::push_warning("GitBackend: fast-forward merge failed: ", msg);
-			if (out_error_message) {
-				*out_error_message = String("Fast-forward merge failed: ") + msg;
-			}
+			UtilityFunctions::push_warning("GitBackend: fast-forward merge failed: ", (err && err->message) ? err->message : "unknown error");
 		}
 		if (target_ref) {
 			git_reference_free(target_ref);
@@ -936,22 +885,14 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 		int rc = git_merge(repo, heads, 1, &merge_opts, &checkout_opts);
 		if (rc != 0) {
 			const git_error *err = git_error_last();
-			String msg = (err && err->message) ? String::utf8(err->message) : String("unknown error");
-			UtilityFunctions::push_warning("GitBackend: merge failed: ", msg);
-			if (out_error_message) {
-				*out_error_message = String("Merge failed: ") + msg;
-			}
+			UtilityFunctions::push_warning("GitBackend: merge failed: ", (err && err->message) ? err->message : "unknown error");
 			git_repository_state_cleanup(repo);
 		} else {
 			git_index *index = nullptr;
 			git_repository_index(&index, repo);
 			if (index && git_index_has_conflicts(index)) {
-				UtilityFunctions::push_warning("GitBackend: merge of '", source_display_name, "' into '", target,
+				UtilityFunctions::push_warning("GitBackend: merge of '", source, "' into '", target,
 						"' produced conflicts; resolve manually with the git CLI, then retry.");
-				if (out_error_message) {
-					*out_error_message = String("Merge of '") + source_display_name + String("' into '") + target +
-							String("' produced conflicts; resolve manually with the git CLI, then retry.");
-				}
 				git_checkout_options reset_opts = GIT_CHECKOUT_OPTIONS_INIT;
 				reset_opts.checkout_strategy = GIT_CHECKOUT_FORCE;
 				git_checkout_head(repo, &reset_opts);
@@ -970,7 +911,7 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 				git_signature *sig = nullptr;
 				git_signature_default(&sig, repo);
 
-				String msg = String("Merge branch '") + source_display_name + String("' into ") + target;
+				String msg = String("Merge branch '") + source + String("' into ") + target;
 				const git_commit *parents[2] = { target_commit, source_commit };
 				git_oid new_commit_oid;
 				rc = (sig && target_commit && source_commit && merged_tree)
@@ -981,11 +922,7 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 					result = 0;
 				} else {
 					const git_error *err = git_error_last();
-					String err_msg = (err && err->message) ? String::utf8(err->message) : String("unknown error");
-					UtilityFunctions::push_warning("GitBackend: failed to create merge commit: ", err_msg);
-					if (out_error_message) {
-						*out_error_message = String("Failed to create merge commit: ") + err_msg;
-					}
+					UtilityFunctions::push_warning("GitBackend: failed to create merge commit: ", (err && err->message) ? err->message : "unknown error");
 				}
 
 				if (sig) {
@@ -1007,17 +944,15 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 			}
 		}
 	} else {
-		UtilityFunctions::push_warning("GitBackend: cannot merge '", source_display_name, "' into '", target, "' (unsupported merge state).");
-		if (out_error_message) {
-			*out_error_message = String("Cannot merge '") + source_display_name + String("' into '") + target + String("' (unsupported merge state).");
-		}
+		UtilityFunctions::push_warning("GitBackend: cannot merge '", source, "' into '", target, "' (unsupported merge state).");
 	}
 
+	git_annotated_commit_free(their_head);
+	git_reference_free(source_ref);
 	return result;
 }
 
 bool GitBackend::commit_staged(const String &message) const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1044,7 +979,6 @@ bool GitBackend::commit_staged(const String &message) const {
 }
 
 bool GitBackend::stage_file(const String &path) const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1077,7 +1011,6 @@ bool GitBackend::stage_file(const String &path) const {
 }
 
 bool GitBackend::unstage_file(const String &path) const {
-	MutexLock lock(**repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1122,195 +1055,4 @@ bool GitBackend::unstage_file(const String &path) const {
 		return false;
 	}
 	return true;
-}
-
-int GitBackend::credentials_cb(git_credential **out, const char *, const char *username_from_url,
-		unsigned int allowed_types, void *) {
-	if (allowed_types & GIT_CREDENTIAL_SSH_KEY) {
-		const char *user = username_from_url ? username_from_url : "git";
-		if (git_credential_ssh_key_from_agent(out, user) == 0) {
-			return 0;
-		}
-	}
-	return GIT_PASSTHROUGH;
-}
-
-Dictionary GitBackend::get_ahead_behind(const String &remote_name) const {
-	if (!repo_mutex->try_lock()) {
-		Dictionary stale = cached_ahead_behind.duplicate();
-		stale["stale"] = true;
-		return stale;
-	}
-
-	Dictionary result;
-	result["ahead"] = 0;
-	result["behind"] = 0;
-	result["has_upstream"] = false;
-	result["stale"] = false;
-
-	if (!repo) {
-		repo_mutex->unlock();
-		return result;
-	}
-
-	git_reference *head_ref = nullptr;
-	if (git_repository_head(&head_ref, repo) != 0) {
-		repo_mutex->unlock();
-		cached_ahead_behind = result;
-		return result;
-	}
-
-	git_reference *upstream_ref = nullptr;
-	if (git_branch_upstream(&upstream_ref, head_ref) != 0) {
-		git_reference_free(head_ref);
-		repo_mutex->unlock();
-		cached_ahead_behind = result;
-		return result;
-	}
-
-	const git_oid *local_oid = git_reference_target(head_ref);
-	const git_oid *upstream_oid = git_reference_target(upstream_ref);
-	if (local_oid && upstream_oid) {
-		size_t ahead = 0;
-		size_t behind = 0;
-		if (git_graph_ahead_behind(&ahead, &behind, repo, local_oid, upstream_oid) == 0) {
-			result["ahead"] = (int)ahead;
-			result["behind"] = (int)behind;
-			result["has_upstream"] = true;
-		}
-	}
-
-	git_reference_free(upstream_ref);
-	git_reference_free(head_ref);
-	repo_mutex->unlock();
-	cached_ahead_behind = result;
-	return result;
-}
-
-bool GitBackend::is_remote_op_busy() const {
-	return bg_thread.is_valid() && bg_thread->is_alive();
-}
-
-bool GitBackend::start_fetch(const String &remote_name) {
-	if (!repo) {
-		return false;
-	}
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		if (bg_thread->is_alive()) {
-			return false;
-		}
-		bg_thread->wait_to_finish();
-	}
-	if (!bg_thread.is_valid()) {
-		bg_thread.instantiate();
-	}
-	bg_thread->start(callable_mp(this, &GitBackend::fetch_worker).bind(remote_name));
-	return true;
-}
-
-bool GitBackend::start_pull(const String &remote_name) {
-	if (!repo) {
-		return false;
-	}
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		if (bg_thread->is_alive()) {
-			return false;
-		}
-		bg_thread->wait_to_finish();
-	}
-	if (!bg_thread.is_valid()) {
-		bg_thread.instantiate();
-	}
-	bg_thread->start(callable_mp(this, &GitBackend::pull_worker).bind(remote_name));
-	return true;
-}
-
-void GitBackend::fetch_worker(String remote_name) {
-	MutexLock lock(**repo_mutex);
-
-	bool ok = false;
-	String error_message;
-
-	if (!repo) {
-		error_message = "No repository open.";
-	} else {
-		git_remote *remote = nullptr;
-		if (git_remote_lookup(&remote, repo, remote_name.utf8().get_data()) != 0) {
-			error_message = String("Remote '") + remote_name + String("' not found.");
-		} else {
-			git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
-			opts.callbacks.credentials = &GitBackend::credentials_cb;
-
-			int rc = git_remote_fetch(remote, nullptr, &opts, "fetch");
-			if (rc == 0) {
-				ok = true;
-			} else {
-				const git_error *err = git_error_last();
-				error_message = (err && err->message) ? String::utf8(err->message) : String("fetch failed");
-			}
-			git_remote_free(remote);
-		}
-	}
-
-	if (!ok) {
-		UtilityFunctions::push_warning("GitBackend: fetch from '", remote_name, "' failed: ", error_message);
-	}
-
-	call_deferred("emit_signal", "fetch_finished", ok, error_message);
-}
-
-void GitBackend::pull_worker(String remote_name) {
-	MutexLock lock(**repo_mutex);
-
-	bool ok = false;
-	String error_message;
-	int merge_result = -1;
-
-	if (!repo) {
-		error_message = "No repository open.";
-	} else if (git_repository_head_detached(repo) == 1) {
-		error_message = "Cannot pull while HEAD is detached.";
-	} else {
-		String branch = get_current_branch_raw_name();
-		if (branch.is_empty()) {
-			error_message = "Cannot determine current branch.";
-		} else {
-			git_remote *remote = nullptr;
-			if (git_remote_lookup(&remote, repo, remote_name.utf8().get_data()) != 0) {
-				error_message = String("Remote '") + remote_name + String("' not found.");
-			} else {
-				git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
-				opts.callbacks.credentials = &GitBackend::credentials_cb;
-				int rc = git_remote_fetch(remote, nullptr, &opts, "fetch");
-				git_remote_free(remote);
-
-				if (rc != 0) {
-					const git_error *err = git_error_last();
-					error_message = (err && err->message) ? String::utf8(err->message) : String("fetch failed");
-				} else {
-					String tracking_ref_name = String("refs/remotes/") + remote_name + String("/") + branch;
-					git_reference *tracking_ref = nullptr;
-					if (git_reference_lookup(&tracking_ref, repo, tracking_ref_name.utf8().get_data()) != 0) {
-						error_message = "No upstream tracking ref for current branch.";
-					} else {
-						git_annotated_commit *their_head = nullptr;
-						if (git_annotated_commit_from_ref(&their_head, repo, tracking_ref) != 0) {
-							error_message = "Could not resolve fetched remote branch.";
-						} else {
-							merge_result = merge_annotated_into_current(remote_name + String("/") + branch, their_head, branch, &error_message);
-							ok = merge_result != -1;
-							git_annotated_commit_free(their_head);
-						}
-						git_reference_free(tracking_ref);
-					}
-				}
-			}
-		}
-	}
-
-	if (!ok) {
-		UtilityFunctions::push_warning("GitBackend: pull from '", remote_name, "' failed: ", error_message);
-	}
-
-	call_deferred("emit_signal", "pull_finished", ok, error_message, merge_result);
 }
