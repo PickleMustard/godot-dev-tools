@@ -24,6 +24,7 @@ private:
 	mutable Ref<Mutex> repo_mutex;
 	Ref<Thread> bg_thread;
 	mutable Dictionary cached_ahead_behind;
+	String ssh_key_passphrase;
 
 	void close_repository();
 	git_tree *resolve_head_tree() const;
@@ -75,6 +76,15 @@ public:
 	bool start_fetch(const String &remote_name = "origin");
 	bool start_pull(const String &remote_name = "origin");
 	bool is_remote_op_busy() const;
+
+	String get_config_string(const String &key, const String &default_value = "") const;
+	bool set_config_string(const String &key, const String &value) const;
+
+	TypedArray<Dictionary> list_remotes() const;
+	bool set_remote_url(const String &name, const String &url) const;
+	bool remove_remote(const String &name) const;
+
+	void set_ssh_passphrase(const String &passphrase);
 };
 
 } // namespace godot

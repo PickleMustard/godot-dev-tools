@@ -185,6 +185,15 @@ void GitBackend::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("start_pull", "remote_name"), &GitBackend::start_pull, DEFVAL(String("origin")));
 	ClassDB::bind_method(D_METHOD("is_remote_op_busy"), &GitBackend::is_remote_op_busy);
 
+	ClassDB::bind_method(D_METHOD("get_config_string", "key", "default_value"), &GitBackend::get_config_string, DEFVAL(String("")));
+	ClassDB::bind_method(D_METHOD("set_config_string", "key", "value"), &GitBackend::set_config_string);
+
+	ClassDB::bind_method(D_METHOD("list_remotes"), &GitBackend::list_remotes);
+	ClassDB::bind_method(D_METHOD("set_remote_url", "name", "url"), &GitBackend::set_remote_url);
+	ClassDB::bind_method(D_METHOD("remove_remote", "name"), &GitBackend::remove_remote);
+
+	ClassDB::bind_method(D_METHOD("set_ssh_passphrase", "passphrase"), &GitBackend::set_ssh_passphrase);
+
 	ADD_SIGNAL(MethodInfo("fetch_finished",
 			PropertyInfo(Variant::BOOL, "ok"),
 			PropertyInfo(Variant::STRING, "error_message")));
@@ -1354,12 +1363,35 @@ bool GitBackend::drop_stash(int index) const {
 }
 
 int GitBackend::credentials_cb(git_credential **out, const char *, const char *username_from_url,
-		unsigned int allowed_types, void *) {
-	if (allowed_types & GIT_CREDENTIAL_SSH_KEY) {
-		const char *user = username_from_url ? username_from_url : "git";
-		if (git_credential_ssh_key_from_agent(out, user) == 0) {
-			return 0;
+		unsigned int allowed_types, void *payload) {
+	if (!(allowed_types & GIT_CREDENTIAL_SSH_KEY)) {
+		return GIT_PASSTHROUGH;
+	}
+	const char *user = username_from_url ? username_from_url : "git";
+	GitBackend *self = static_cast<GitBackend *>(payload);
+
+	if (self && self->repo) {
+		git_config *cfg = nullptr;
+		if (git_repository_config(&cfg, self->repo) == 0) {
+			const char *key_path = nullptr;
+			if (git_config_get_string(&key_path, cfg, "devtools.sshkeypath") == 0 && key_path && key_path[0] != '\0') {
+				std::string priv_path(key_path);
+				std::string pub_path = priv_path + ".pub";
+				CharString utf8_passphrase = self->ssh_key_passphrase.utf8();
+				const char *passphrase = utf8_passphrase.length() > 0 ? utf8_passphrase.get_data() : nullptr;
+				int rc = git_credential_ssh_key_new(out, user, pub_path.c_str(), priv_path.c_str(), passphrase);
+				git_config_free(cfg);
+				if (rc == 0) {
+					return 0;
+				}
+			} else {
+				git_config_free(cfg);
+			}
 		}
+	}
+
+	if (git_credential_ssh_key_from_agent(out, user) == 0) {
+		return 0;
 	}
 	return GIT_PASSTHROUGH;
 }
@@ -1469,6 +1501,7 @@ void GitBackend::fetch_worker(String remote_name) {
 		} else {
 			git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
 			opts.callbacks.credentials = &GitBackend::credentials_cb;
+			opts.callbacks.payload = this;
 
 			int rc = git_remote_fetch(remote, nullptr, &opts, "fetch");
 			if (rc == 0) {
@@ -1510,6 +1543,7 @@ void GitBackend::pull_worker(String remote_name) {
 			} else {
 				git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
 				opts.callbacks.credentials = &GitBackend::credentials_cb;
+				opts.callbacks.payload = this;
 				int rc = git_remote_fetch(remote, nullptr, &opts, "fetch");
 				git_remote_free(remote);
 
@@ -1542,4 +1576,124 @@ void GitBackend::pull_worker(String remote_name) {
 	}
 
 	call_deferred("emit_signal", "pull_finished", ok, error_message, merge_result);
+}
+
+String GitBackend::get_config_string(const String &key, const String &default_value) const {
+	MutexLock lock(**repo_mutex);
+	if (!repo) {
+		return default_value;
+	}
+	git_config *cfg = nullptr;
+	if (git_repository_config(&cfg, repo) != 0) {
+		return default_value;
+	}
+	String result = default_value;
+	const char *value = nullptr;
+	if (git_config_get_string(&value, cfg, key.utf8().get_data()) == 0 && value) {
+		result = String::utf8(value);
+	}
+	git_config_free(cfg);
+	return result;
+}
+
+bool GitBackend::set_config_string(const String &key, const String &value) const {
+	MutexLock lock(**repo_mutex);
+	if (!repo) {
+		return false;
+	}
+	git_config *cfg = nullptr;
+	if (git_repository_config(&cfg, repo) != 0) {
+		return false;
+	}
+	int rc = git_config_set_string(cfg, key.utf8().get_data(), value.utf8().get_data());
+	git_config_free(cfg);
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to set config '", key, "': ", (err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
+}
+
+TypedArray<Dictionary> GitBackend::list_remotes() const {
+	MutexLock lock(**repo_mutex);
+	TypedArray<Dictionary> result;
+	if (!repo) {
+		return result;
+	}
+
+	git_strarray remotes = { nullptr, 0 };
+	if (git_remote_list(&remotes, repo) != 0) {
+		return result;
+	}
+
+	for (size_t i = 0; i < remotes.count; i++) {
+		const char *name = remotes.strings[i];
+		git_remote *remote = nullptr;
+		if (git_remote_lookup(&remote, repo, name) != 0) {
+			continue;
+		}
+		Dictionary d;
+		d["name"] = String::utf8(name);
+		const char *url = git_remote_url(remote);
+		d["url"] = url ? String::utf8(url) : String();
+		const char *push_url = git_remote_pushurl(remote);
+		d["push_url"] = push_url ? String::utf8(push_url) : String();
+		result.push_back(d);
+		git_remote_free(remote);
+	}
+
+	git_strarray_dispose(&remotes);
+	return result;
+}
+
+bool GitBackend::set_remote_url(const String &name, const String &url) const {
+	MutexLock lock(**repo_mutex);
+	if (!repo) {
+		return false;
+	}
+
+	CharString utf8_name = name.utf8();
+	CharString utf8_url = url.utf8();
+
+	git_remote *existing = nullptr;
+	if (git_remote_lookup(&existing, repo, utf8_name.get_data()) == 0) {
+		git_remote_free(existing);
+		int rc = git_remote_set_url(repo, utf8_name.get_data(), utf8_url.get_data());
+		if (rc != 0) {
+			const git_error *err = git_error_last();
+			UtilityFunctions::push_warning("GitBackend: failed to set URL for remote '", name, "': ", (err && err->message) ? err->message : "unknown error");
+			return false;
+		}
+		return true;
+	}
+
+	git_remote *created = nullptr;
+	int rc = git_remote_create(&created, repo, utf8_name.get_data(), utf8_url.get_data());
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to create remote '", name, "': ", (err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	git_remote_free(created);
+	return true;
+}
+
+bool GitBackend::remove_remote(const String &name) const {
+	MutexLock lock(**repo_mutex);
+	if (!repo) {
+		return false;
+	}
+
+	int rc = git_remote_delete(repo, name.utf8().get_data());
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to remove remote '", name, "': ", (err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
+}
+
+void GitBackend::set_ssh_passphrase(const String &passphrase) {
+	ssh_key_passphrase = passphrase;
 }

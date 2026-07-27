@@ -45,6 +45,7 @@ var _poll_check_in_progress: bool = false
 @onready var commit_button: Button = %CommitButton
 @onready var branches_view = %Branches
 @onready var stash_view = %Stash
+@onready var settings_view = %Settings
 @onready var error_dialog: AcceptDialog = %ErrorDialog
 @onready var repo_state_banner: Control = %RepoStateBanner
 @onready var repo_state_label: Label = %RepoStateLabel
@@ -84,6 +85,13 @@ func _ready() -> void:
 
 	stash_view.stash_apply_requested.connect(_on_stash_apply_requested)
 	stash_view.stash_drop_requested.connect(_on_stash_drop_requested)
+
+	settings_view.remote_url_save_requested.connect(_on_remote_url_save_requested)
+	settings_view.ssh_key_save_requested.connect(_on_ssh_key_save_requested)
+	settings_view.identity_save_requested.connect(_on_identity_save_requested)
+	settings_view.remote_add_requested.connect(_on_settings_remote_add_requested)
+	settings_view.remote_remove_requested.connect(_on_settings_remote_remove_requested)
+	settings_view.config_set_requested.connect(_on_settings_config_set_requested)
 
 	diff_view.file_selected.connect(_on_diff_file_selected)
 	staging_view.file_selected.connect(_on_staging_file_selected)
@@ -182,7 +190,30 @@ func _refresh_worker() -> void:
 	data["repo_state"] = repo_state
 	data["rebase_progress"] = git_backend.get_rebase_progress() if repo_state == "rebase" else {}
 	data["stashes"] = git_backend.list_stashes()
+	data["settings"] = _gather_settings_data()
 	call_deferred("emit_signal", "refresh_data_ready", data)
+
+
+func _gather_settings_data() -> Dictionary:
+	var remotes: Array = git_backend.list_remotes()
+	var remote_url := ""
+	for r in remotes:
+		var d: Dictionary = r
+		if d.get("name", "") == "origin":
+			remote_url = d.get("url", "")
+			break
+	return {
+		"remote_url": remote_url,
+		"remotes": remotes,
+		"ssh_key_path": git_backend.get_config_string("devtools.sshkeypath"),
+		"user_name": git_backend.get_config_string("user.name"),
+		"user_email": git_backend.get_config_string("user.email"),
+		"core_autocrlf": git_backend.get_config_string("core.autocrlf"),
+		"core_filemode": git_backend.get_config_string("core.filemode"),
+		"pull_rebase": git_backend.get_config_string("pull.rebase"),
+		"push_default": git_backend.get_config_string("push.default"),
+		"init_default_branch": git_backend.get_config_string("init.defaultBranch"),
+	}
 
 
 func _apply_refresh_data(data: Dictionary) -> void:
@@ -215,6 +246,7 @@ func _apply_refresh_data(data: Dictionary) -> void:
 
 	_update_repo_state_banner(data["repo_state"], data["rebase_progress"])
 	stash_view.load_stashes(data["stashes"])
+	settings_view.load_settings(data["settings"])
 
 	var current_view := _get_current_view_name()
 	if current_view.is_empty() or current_view == "NoRepoView":
@@ -600,6 +632,61 @@ func _on_merge_requested(source: String, target: String) -> void:
 		_show_info("'%s' already contains all commits from '%s'." % [target, source])
 	else:
 		_show_error("Merge of '%s' into '%s' failed. There may be a conflict requiring manual resolution (use the git CLI)." % [source, target])
+
+
+func _on_remote_url_save_requested(url: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.set_remote_url("origin", url):
+		_refresh()
+	else:
+		_show_error("Could not set remote 'origin' to '%s'." % url)
+
+
+func _on_ssh_key_save_requested(path: String, passphrase: String) -> void:
+	if not git_backend:
+		return
+	git_backend.set_ssh_passphrase(passphrase)
+	if git_backend.set_config_string("devtools.sshkeypath", path):
+		_refresh()
+	else:
+		_show_error("Could not save SSH key path.")
+
+
+func _on_identity_save_requested(user_name: String, user_email: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.set_config_string("user.name", user_name) and git_backend.set_config_string("user.email", user_email):
+		_refresh()
+	else:
+		_show_error("Could not save identity settings.")
+
+
+func _on_settings_remote_add_requested(remote_name: String, url: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.set_remote_url(remote_name, url):
+		_refresh()
+	else:
+		_show_error("Could not add remote '%s'." % remote_name)
+
+
+func _on_settings_remote_remove_requested(remote_name: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.remove_remote(remote_name):
+		_refresh()
+	else:
+		_show_error("Could not remove remote '%s'." % remote_name)
+
+
+func _on_settings_config_set_requested(key: String, value: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.set_config_string(key, value):
+		_refresh()
+	else:
+		_show_error("Could not set config '%s'." % key)
 
 
 func _show_error(message: String) -> void:

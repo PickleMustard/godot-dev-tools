@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=21 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_visualizer.gd" id="1"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_diff_view.gd" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_side_by_side_view.gd" id="6"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_file_list.gd" id="7"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_stash_view.gd" id="8"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_repo_settings_view.gd" id="9"]
 
 [sub_resource type="StyleBoxFlat" id="1"]
 content_margin_left = 8.0
@@ -734,6 +735,357 @@ layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
 text = "Drop"
+
+[node name="Settings" type="MarginContainer" parent="OuterFrame/MainTabs"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+script = ExtResource("9")
+
+[node name="SettingsScroll" type="ScrollContainer" parent="OuterFrame/MainTabs/Settings"]
+layout_mode = 2
+
+[node name="SettingsRoot" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RemoteSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("2")
+
+[node name="RemoteBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/RemoteSection"]
+layout_mode = 2
+
+[node name="RemoteHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/RemoteSection/RemoteBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="RemoteHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/RemoteSection/RemoteBox/RemoteHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Remote"
+
+[node name="RemoteRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/RemoteSection/RemoteBox"]
+layout_mode = 2
+
+[node name="RemoteUrlEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/RemoteSection/RemoteBox/RemoteRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "git@host:org/repo.git or https://host/org/repo.git"
+
+[node name="RemoteUrlSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/RemoteSection/RemoteBox/RemoteRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="SshSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("4")
+
+[node name="SshBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection"]
+layout_mode = 2
+
+[node name="SshHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("5")
+
+[node name="SshHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox/SshHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "SSH"
+
+[node name="SshKeyRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox"]
+layout_mode = 2
+
+[node name="SshKeyPathEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox/SshKeyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Path to private key (e.g. ~/.ssh/id_ed25519)"
+
+[node name="SshKeyBrowseButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox/SshKeyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Browse"
+
+[node name="SshPassphraseRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox"]
+layout_mode = 2
+
+[node name="SshPassphraseEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox/SshPassphraseRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+secret = true
+placeholder_text = "Passphrase (optional, session-only, never saved to disk)"
+
+[node name="SshKeySaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save SSH Key"
+
+[node name="SshKeyFileDialog" type="FileDialog" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/SshSection/SshBox"]
+unique_name_in_owner = true
+title = "Select SSH Private Key"
+size = Vector2i(600, 400)
+access = 2
+file_mode = 0
+
+[node name="IdentitySection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("6")
+
+[node name="IdentityBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection"]
+layout_mode = 2
+
+[node name="IdentityHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("7")
+
+[node name="IdentityHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox/IdentityHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Identity"
+
+[node name="UserNameRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox"]
+layout_mode = 2
+
+[node name="UserNameLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox/UserNameRow"]
+layout_mode = 2
+text = "Name"
+
+[node name="UserNameEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox/UserNameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="UserEmailRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox"]
+layout_mode = 2
+
+[node name="UserEmailLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox/UserEmailRow"]
+layout_mode = 2
+text = "Email"
+
+[node name="UserEmailEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox/UserEmailRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="IdentitySaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/IdentitySection/IdentityBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="AdvancedFold" type="FoldableContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot"]
+unique_name_in_owner = true
+layout_mode = 2
+title = "Advanced"
+folded = true
+
+[node name="AdvancedBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold"]
+layout_mode = 2
+
+[node name="RemotesSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("10")
+
+[node name="RemotesBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection"]
+layout_mode = 2
+
+[node name="RemotesHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("11")
+
+[node name="RemotesHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox/RemotesHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Remotes"
+
+[node name="RemotesList" type="ItemList" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RemoteRemoveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Remove Selected Remote"
+
+[node name="NewRemoteRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox"]
+layout_mode = 2
+
+[node name="NewRemoteNameEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox/NewRemoteRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "name (e.g. upstream)"
+
+[node name="NewRemoteUrlEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox/NewRemoteRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "url"
+
+[node name="RemoteAddButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/RemotesSection/RemotesBox/NewRemoteRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Add"
+
+[node name="CoreOptionsSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("2")
+
+[node name="CoreOptionsBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection"]
+layout_mode = 2
+
+[node name="CoreOptionsHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="CoreOptionsHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/CoreOptionsHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Core Options"
+
+[node name="CoreAutocrlfRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox"]
+layout_mode = 2
+
+[node name="CoreAutocrlfLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/CoreAutocrlfRow"]
+layout_mode = 2
+text = "core.autocrlf"
+
+[node name="CoreAutocrlfOption" type="OptionButton" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/CoreAutocrlfRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+item_count = 3
+selected = 0
+popup/item_0/text = "false"
+popup/item_0/id = 0
+popup/item_1/text = "true"
+popup/item_1/id = 1
+popup/item_2/text = "input"
+popup/item_2/id = 2
+
+[node name="CoreAutocrlfSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/CoreAutocrlfRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="CoreFilemodeRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox"]
+layout_mode = 2
+
+[node name="CoreFilemodeCheck" type="CheckBox" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/CoreFilemodeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "core.filemode"
+
+[node name="CoreFilemodeSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/CoreFilemodeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="PullRebaseRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox"]
+layout_mode = 2
+
+[node name="PullRebaseCheck" type="CheckBox" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/PullRebaseRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "pull.rebase"
+
+[node name="PullRebaseSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/PullRebaseRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="PushDefaultRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox"]
+layout_mode = 2
+
+[node name="PushDefaultLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/PushDefaultRow"]
+layout_mode = 2
+text = "push.default"
+
+[node name="PushDefaultOption" type="OptionButton" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/PushDefaultRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+item_count = 5
+selected = 0
+popup/item_0/text = "simple"
+popup/item_0/id = 0
+popup/item_1/text = "matching"
+popup/item_1/id = 1
+popup/item_2/text = "upstream"
+popup/item_2/id = 2
+popup/item_3/text = "current"
+popup/item_3/id = 3
+popup/item_4/text = "nothing"
+popup/item_4/id = 4
+
+[node name="PushDefaultSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/PushDefaultRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="InitDefaultBranchRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox"]
+layout_mode = 2
+
+[node name="InitDefaultBranchLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/InitDefaultBranchRow"]
+layout_mode = 2
+text = "init.defaultBranch"
+
+[node name="InitDefaultBranchEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/InitDefaultBranchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "main"
+
+[node name="InitDefaultBranchSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CoreOptionsSection/CoreOptionsBox/InitDefaultBranchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="CustomConfigSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("4")
+
+[node name="CustomConfigBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection"]
+layout_mode = 2
+
+[node name="CustomConfigHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection/CustomConfigBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("5")
+
+[node name="CustomConfigHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection/CustomConfigBox/CustomConfigHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Custom Config"
+
+[node name="CustomConfigRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection/CustomConfigBox"]
+layout_mode = 2
+
+[node name="CustomConfigKeyEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection/CustomConfigBox/CustomConfigRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "key (e.g. merge.ff)"
+
+[node name="CustomConfigValueEdit" type="LineEdit" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection/CustomConfigBox/CustomConfigRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "value"
+
+[node name="CustomConfigSetButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/CustomConfigSection/CustomConfigBox/CustomConfigRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Set"
 
 [node name="ErrorDialog" type="AcceptDialog" parent="."]
 unique_name_in_owner = true
