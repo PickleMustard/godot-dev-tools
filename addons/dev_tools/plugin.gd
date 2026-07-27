@@ -46,6 +46,8 @@ func _init_lfs_tab() -> void:
 	lfs_visualizer = LfsVisualizerScene.instantiate()
 	lfs_visualizer.setup(git_backend, repo_open, project_root)
 	main_panel.add_tool_tab("LFS", lfs_visualizer)
+	if git_visualizer:
+		git_visualizer.status_ready.connect(lfs_visualizer._on_git_status_ready)
 
 
 func _exit_tree() -> void:

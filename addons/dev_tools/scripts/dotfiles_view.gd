@@ -7,6 +7,8 @@ var project_root: String = ""
 var gitignore_path: String = ""
 var gitattributes_path: String = ""
 var _gitattributes_dirty: bool = false
+var _lfs_scan_thread: Thread
+var _lfs_scan_in_progress: bool = false
 
 @onready var gitignore_edit: CodeEdit = %GitignoreEdit
 @onready var save_gitignore_button: Button = %SaveGitignoreButton
@@ -15,6 +17,7 @@ var _gitattributes_dirty: bool = false
 @onready var reload_gitattributes_button: Button = %ReloadGitattributesButton
 @onready var rescan_button: Button = %RescanButton
 @onready var lfs_checkbox_list: VBoxContainer = %LfsCheckboxList
+@onready var lfs_scan_status_label: Label = %LfsScanStatusLabel
 @onready var error_dialog: AcceptDialog = %ErrorDialog
 
 
@@ -35,6 +38,11 @@ func _ready() -> void:
 
 	if not project_root.is_empty():
 		_reload_all()
+
+
+func _exit_tree() -> void:
+	if _lfs_scan_thread and _lfs_scan_thread.is_started():
+		_lfs_scan_thread.wait_to_finish()
 
 
 func _reload_all() -> void:
@@ -72,17 +80,40 @@ func _on_gitattributes_text_changed() -> void:
 
 
 func _refresh_lfs_checkboxes() -> void:
+	if _lfs_scan_in_progress:
+		return
+	_lfs_scan_in_progress = true
+	if _lfs_scan_thread and _lfs_scan_thread.is_started():
+		_lfs_scan_thread.wait_to_finish()
+	rescan_button.disabled = true
+	lfs_scan_status_label.text = "Scanning..."
+	lfs_scan_status_label.visible = true
+	_lfs_scan_thread = Thread.new()
+	_lfs_scan_thread.start(_refresh_lfs_checkboxes_worker, Thread.PRIORITY_LOW)
+
+
+func _refresh_lfs_checkboxes_worker() -> void:
+	var extensions := LfsScanner.scan_binary_extensions(project_root)
+	var tracked_patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	call_deferred("_apply_lfs_checkboxes_data", extensions, tracked_patterns)
+
+
+func _apply_lfs_checkboxes_data(extensions: PackedStringArray, tracked_patterns: PackedStringArray) -> void:
+	if _lfs_scan_thread and _lfs_scan_thread.is_started():
+		_lfs_scan_thread.wait_to_finish()
+	_lfs_scan_in_progress = false
+	rescan_button.disabled = false
+	lfs_scan_status_label.visible = false
+
 	for child in lfs_checkbox_list.get_children():
 		child.queue_free()
 
-	var extensions := LfsScanner.scan_binary_extensions(project_root)
 	if extensions.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = "(no binary file types found)"
 		lfs_checkbox_list.add_child(empty_label)
 		return
 
-	var tracked_patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	for ext in extensions:
 		var pattern := GitAttributesUtil.extension_to_pattern(ext)
 		var row: LfsExtensionRow = LfsExtensionRowScene.instantiate()

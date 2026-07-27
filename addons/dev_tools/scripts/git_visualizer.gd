@@ -1,9 +1,12 @@
 @tool
 extends Control
 
+signal status_ready(status: Dictionary)
+
 const MAX_HISTORY: int = 300
 const HISTORY_PREVIEW_COUNT: int = 5
 const POLL_INTERVAL_SEC: float = 2.0
+const REMOTE_POLL_INTERVAL_SEC: float = 1200.0
 const BRANCH_MENU_CREATE_ID: int = 1 << 20
 const GitStatusRowScene = preload("res://addons/dev_tools/menus/git_status_row.tscn")
 
@@ -11,17 +14,29 @@ var git_backend: GitBackend
 var project_root: String = ""
 var repo_open: bool = false
 var _poll_timer: Timer
+var _remote_poll_timer: Timer
 var _last_signature: Dictionary = {}
 var _branch_menu_names: PackedStringArray = []
 var _initial_refresh_pending: bool = false
 var _previous_view_name: String = "DiffView"
+var _remote_op_busy: bool = false
+var _pending_commit_message: String = ""
+var _refresh_thread: Thread
+var _refresh_in_progress: bool = false
+var _poll_thread: Thread
+var _poll_check_in_progress: bool = false
 
 @onready var main_tabs: TabContainer = %MainTabs
+@onready var fetch_button: Button = %FetchButton
+@onready var pull_button: Button = %PullButton
+@onready var pull_indicator: TextureRect = %PullIndicator
+@onready var pull_gate_dialog: ConfirmationDialog = %PullGateDialog
 @onready var branch_menu_button: MenuButton = %BranchMenuButton
 @onready var staged_section: Control = %StagedSection
 @onready var staged_list: VBoxContainer = %StagedList
 @onready var unstaged_section: Control = %UnstagedSection
 @onready var unstaged_list: VBoxContainer = %UnstagedList
+@onready var stage_all_button: Button = %StageAllButton
 @onready var history_section: Control = %HistorySection
 @onready var history_preview_list: ItemList = %HistoryPreviewList
 @onready var commit_message_edit: TextEdit = %CommitMessageEdit
@@ -44,7 +59,7 @@ func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
 	repo_open = is_open
 	project_root = root_path
 	if is_inside_tree():
-		_schedule_initial_refresh()
+		_request_initial_refresh_when_visible()
 
 
 func _ready() -> void:
@@ -53,6 +68,7 @@ func _ready() -> void:
 	history_section.focus_entered.connect(_show_view.bind("HistoryView"))
 	history_preview_list.focus_entered.connect(_show_view.bind("HistoryView"))
 	init_repo_button.pressed.connect(_on_init_repo_pressed)
+	stage_all_button.pressed.connect(_on_stage_all_pressed)
 
 	branch_menu_button.get_popup().id_pressed.connect(_on_branch_menu_id_pressed)
 	commit_button.pressed.connect(_on_commit_pressed)
@@ -66,6 +82,13 @@ func _ready() -> void:
 	staging_view.unstage_requested.connect(_on_unstage_requested)
 	file_detail_view.back_requested.connect(_on_file_detail_back)
 
+	fetch_button.pressed.connect(_on_fetch_pressed)
+	pull_button.pressed.connect(_on_pull_pressed)
+	pull_gate_dialog.confirmed.connect(_on_pull_gate_pull_confirmed)
+	pull_gate_dialog.custom_action.connect(_on_pull_gate_custom_action)
+	pull_gate_dialog.add_button("Commit Anyway", true, "commit_anyway")
+	pull_indicator.texture = get_theme_icon("MoveDown", "EditorIcons")
+
 	_poll_timer = Timer.new()
 	_poll_timer.wait_time = POLL_INTERVAL_SEC
 	_poll_timer.autostart = true
@@ -73,13 +96,48 @@ func _ready() -> void:
 	add_child(_poll_timer)
 	_poll_timer.timeout.connect(_on_poll_timeout)
 
+	_remote_poll_timer = Timer.new()
+	_remote_poll_timer.wait_time = REMOTE_POLL_INTERVAL_SEC
+	_remote_poll_timer.autostart = true
+	_remote_poll_timer.one_shot = false
+	add_child(_remote_poll_timer)
+	_remote_poll_timer.timeout.connect(_on_remote_poll_timeout)
+
 	if git_backend:
-		_schedule_initial_refresh()
+		git_backend.fetch_finished.connect(_on_fetch_finished)
+		git_backend.pull_finished.connect(_on_pull_finished)
+		_request_initial_refresh_when_visible()
 
 
 func set_polling_active(active: bool) -> void:
 	if _poll_timer:
 		_poll_timer.paused = not active
+	if _remote_poll_timer:
+		_remote_poll_timer.paused = not active
+
+
+func _exit_tree() -> void:
+	if _refresh_thread:
+		_refresh_thread.wait_to_finish()
+	if _poll_thread:
+		_poll_thread.wait_to_finish()
+
+
+func _request_initial_refresh_when_visible() -> void:
+	if _initial_refresh_pending:
+		return
+	if is_visible_in_tree():
+		_schedule_initial_refresh()
+	elif not visibility_changed.is_connected(_on_became_visible_for_initial_refresh):
+		visibility_changed.connect(_on_became_visible_for_initial_refresh)
+
+
+func _on_became_visible_for_initial_refresh() -> void:
+	if not is_visible_in_tree():
+		return
+	if visibility_changed.is_connected(_on_became_visible_for_initial_refresh):
+		visibility_changed.disconnect(_on_became_visible_for_initial_refresh)
+	_schedule_initial_refresh()
 
 
 func _schedule_initial_refresh() -> void:
@@ -93,14 +151,40 @@ func _refresh() -> void:
 	if not repo_open:
 		_show_view("NoRepoView")
 		return
+	if _refresh_in_progress:
+		return
+	_refresh_in_progress = true
+	if _refresh_thread:
+		_refresh_thread.wait_to_finish()
+	_refresh_thread = Thread.new()
+	_refresh_thread.start(_refresh_worker)
 
-	var branches: Array = git_backend.list_branches()
-	var current_branch: String = git_backend.get_current_branch()
+
+func _refresh_worker() -> void:
+	var data: Dictionary = {}
+	data["branches"] = git_backend.list_branches()
+	data["current_branch"] = git_backend.get_current_branch()
+	data["status"] = git_backend.get_status()
+	data["history"] = git_backend.get_commit_history(MAX_HISTORY)
+	data["diff_head"] = git_backend.get_diff_head()
+	data["staged_diff"] = git_backend.get_staged_diff()
+	data["unstaged_diff"] = git_backend.get_unstaged_diff()
+	call_deferred("_apply_refresh_data", data)
+
+
+func _apply_refresh_data(data: Dictionary) -> void:
+	if _refresh_thread:
+		_refresh_thread.wait_to_finish()
+	_refresh_in_progress = false
+
+	var branches: Array = data["branches"]
+	var current_branch: String = data["current_branch"]
 	branch_menu_button.text = "Branch: %s" % current_branch
 	_populate_branch_menu(branches)
 	branches_view.load_branches(branches)
 
-	var status: Dictionary = git_backend.get_status()
+	var status: Dictionary = data["status"]
+	status_ready.emit(status)
 	_populate_file_list(staged_list, status.get("staged", []), GitStatusRow.ActionMode.UNSTAGE)
 
 	var unstaged_combined: Array = []
@@ -108,11 +192,11 @@ func _refresh() -> void:
 	unstaged_combined.append_array(status.get("untracked", []))
 	_populate_file_list(unstaged_list, unstaged_combined, GitStatusRow.ActionMode.STAGE)
 
-	var history: Array = git_backend.get_commit_history(MAX_HISTORY)
+	var history: Array = data["history"]
 	_populate_history_preview(history)
 
-	diff_view.load_diff(git_backend.get_diff_head())
-	staging_view.load_diffs(git_backend.get_staged_diff(), git_backend.get_unstaged_diff())
+	diff_view.load_diff(data["diff_head"])
+	staging_view.load_diffs(data["staged_diff"], data["unstaged_diff"])
 	history_graph.load_history(history)
 
 	var current_view := _get_current_view_name()
@@ -130,13 +214,38 @@ func _refresh() -> void:
 		"branches": branches,
 	}
 
+	_refresh_pull_indicator()
+
 
 func _on_poll_timeout() -> void:
 	if not repo_open or not is_visible_in_tree():
 		return
+	if _refresh_in_progress or _poll_check_in_progress:
+		return
+	_poll_check_in_progress = true
+	if _poll_thread:
+		_poll_thread.wait_to_finish()
+	_poll_thread = Thread.new()
+	_poll_thread.start(_poll_signature_worker)
+
+
+func _poll_signature_worker() -> void:
 	var sig := _compute_poll_signature()
+	call_deferred("_apply_poll_signature", sig)
+
+
+func _apply_poll_signature(sig: Dictionary) -> void:
+	if _poll_thread:
+		_poll_thread.wait_to_finish()
+	_poll_check_in_progress = false
 	if sig != _last_signature:
 		_refresh()
+
+
+func _on_remote_poll_timeout() -> void:
+	if not repo_open or not git_backend or _remote_op_busy:
+		return
+	_start_fetch()
 
 
 func _compute_poll_signature() -> Dictionary:
@@ -203,6 +312,24 @@ func _on_unstage_requested(path: String) -> void:
 		_refresh()
 	else:
 		_show_error("Could not unstage '%s'." % path)
+
+
+func _on_stage_all_pressed() -> void:
+	if not git_backend:
+		return
+	var status: Dictionary = git_backend.get_status()
+	var entries: Array = []
+	entries.append_array(status.get("unstaged", []))
+	entries.append_array(status.get("untracked", []))
+	var any_failed := false
+	for entry in entries:
+		var e: Dictionary = entry
+		if not git_backend.stage_file(e.get("path", "")):
+			any_failed = true
+	_leave_file_detail_if_showing()
+	_refresh()
+	if any_failed:
+		_show_error("Some files could not be staged.")
 
 
 func _leave_file_detail_if_showing() -> void:
@@ -282,11 +409,94 @@ func _on_commit_pressed() -> void:
 	if msg.is_empty():
 		_show_error("Commit message cannot be empty.")
 		return
+
+	var ab: Dictionary = git_backend.get_ahead_behind("origin")
+	if ab.get("has_upstream", false) and ab.get("behind", 0) > 0:
+		_pending_commit_message = msg
+		pull_gate_dialog.popup_centered()
+		return
+
+	_do_commit(msg)
+
+
+func _do_commit(msg: String) -> void:
 	if git_backend.commit_staged(msg):
 		commit_message_edit.text = ""
 		_refresh()
 	else:
 		_show_error("Commit failed. Make sure there are staged changes.")
+
+
+func _on_pull_gate_pull_confirmed() -> void:
+	_pending_commit_message = ""
+	_start_pull()
+
+
+func _on_pull_gate_custom_action(action_name: String) -> void:
+	if action_name != "commit_anyway":
+		return
+	pull_gate_dialog.hide()
+	var msg := _pending_commit_message
+	_pending_commit_message = ""
+	_do_commit(msg)
+
+
+func _on_fetch_pressed() -> void:
+	_start_fetch()
+
+
+func _on_pull_pressed() -> void:
+	_start_pull()
+
+
+func _start_fetch() -> void:
+	if not git_backend or _remote_op_busy:
+		return
+	if git_backend.start_fetch("origin"):
+		_set_remote_busy(true)
+	else:
+		_show_error("A fetch or pull is already in progress.")
+
+
+func _start_pull() -> void:
+	if not git_backend or _remote_op_busy:
+		return
+	if git_backend.start_pull("origin"):
+		_set_remote_busy(true)
+	else:
+		_show_error("A fetch or pull is already in progress.")
+
+
+func _set_remote_busy(busy: bool) -> void:
+	_remote_op_busy = busy
+	fetch_button.disabled = busy
+	pull_button.disabled = busy
+
+
+func _on_fetch_finished(ok: bool, error_message: String) -> void:
+	_set_remote_busy(false)
+	if ok:
+		_refresh_pull_indicator()
+	else:
+		_show_error("Fetch failed: %s" % error_message)
+
+
+func _on_pull_finished(ok: bool, error_message: String, merge_result: int) -> void:
+	_set_remote_busy(false)
+	if ok and merge_result == 0:
+		_refresh()
+	elif ok and merge_result == 1:
+		_show_info("Already up to date with the remote.")
+	else:
+		_show_error("Pull failed: %s" % error_message)
+	_refresh_pull_indicator()
+
+
+func _refresh_pull_indicator() -> void:
+	if not git_backend:
+		return
+	var ab: Dictionary = git_backend.get_ahead_behind("origin")
+	pull_indicator.visible = ab.get("has_upstream", false) and ab.get("behind", 0) > 0
 
 
 func _on_create_branch_requested(branch_name: String, checkout_after: bool) -> void:

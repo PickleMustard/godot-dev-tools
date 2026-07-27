@@ -67,7 +67,7 @@ static func _walk(dir_path: String, visit_file: Callable) -> void:
 			continue
 		var full_path := dir_path.path_join(entry)
 		if dir.current_is_dir():
-			if not _should_skip_dir(entry):
+			if not _should_skip_dir(entry, full_path):
 				_walk(full_path, visit_file)
 		else:
 			visit_file.call(full_path, entry)
@@ -75,8 +75,15 @@ static func _walk(dir_path: String, visit_file: Callable) -> void:
 	dir.list_dir_end()
 
 
-static func _should_skip_dir(dir_name: String) -> bool:
-	return dir_name.begins_with(".") or SKIP_DIR_NAMES.has(dir_name)
+static func _should_skip_dir(dir_name: String, dir_path: String) -> bool:
+	if dir_name.begins_with(".") or SKIP_DIR_NAMES.has(dir_name):
+		return true
+	return _is_nested_repo_root(dir_path)
+
+
+static func _is_nested_repo_root(dir_path: String) -> bool:
+	var git_path := dir_path.path_join(".git")
+	return FileAccess.file_exists(git_path) or DirAccess.dir_exists_absolute(git_path)
 
 
 static func _is_binary_sample(bytes: PackedByteArray) -> bool:

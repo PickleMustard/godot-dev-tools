@@ -11,12 +11,21 @@ var gitattributes_path: String = ""
 var _poll_timer: Timer
 var _last_signature: Dictionary = {}
 var _initial_refresh_pending: bool = false
+var _changes_thread: Thread
+var _changes_in_progress: bool = false
+var _browse_thread: Thread
+var _browse_in_progress: bool = false
+var _poll_thread: Thread
+var _poll_check_in_progress: bool = false
+var _cached_status: Dictionary = {}
+var _has_cached_status: bool = false
 
 @onready var staged_list: VBoxContainer = %LfsStagedList
 @onready var unstaged_list: VBoxContainer = %LfsUnstagedList
 @onready var browse_list: VBoxContainer = %LfsBrowseList
 @onready var selected_file_label: Label = %SelectedFileLabel
 @onready var rescan_button: Button = %RescanButton
+@onready var lfs_scan_status_label: Label = %LfsScanStatusLabel
 @onready var error_dialog: AcceptDialog = %ErrorDialog
 
 
@@ -26,7 +35,7 @@ func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
 	project_root = root_path
 	gitattributes_path = root_path.path_join(".gitattributes")
 	if is_inside_tree():
-		_schedule_initial_refresh()
+		_request_initial_refresh_when_visible()
 
 
 func _ready() -> void:
@@ -40,12 +49,38 @@ func _ready() -> void:
 	_poll_timer.timeout.connect(_on_poll_timeout)
 
 	if git_backend:
-		_schedule_initial_refresh()
+		_request_initial_refresh_when_visible()
 
 
 func set_polling_active(active: bool) -> void:
 	if _poll_timer:
 		_poll_timer.paused = not active
+
+
+func _exit_tree() -> void:
+	if _changes_thread and _changes_thread.is_started():
+		_changes_thread.wait_to_finish()
+	if _browse_thread and _browse_thread.is_started():
+		_browse_thread.wait_to_finish()
+	if _poll_thread and _poll_thread.is_started():
+		_poll_thread.wait_to_finish()
+
+
+func _request_initial_refresh_when_visible() -> void:
+	if _initial_refresh_pending:
+		return
+	if is_visible_in_tree():
+		_schedule_initial_refresh()
+	elif not visibility_changed.is_connected(_on_became_visible_for_initial_refresh):
+		visibility_changed.connect(_on_became_visible_for_initial_refresh)
+
+
+func _on_became_visible_for_initial_refresh() -> void:
+	if not is_visible_in_tree():
+		return
+	if visibility_changed.is_connected(_on_became_visible_for_initial_refresh):
+		visibility_changed.disconnect(_on_became_visible_for_initial_refresh)
+	_schedule_initial_refresh()
 
 
 func _schedule_initial_refresh() -> void:
@@ -55,8 +90,17 @@ func _schedule_initial_refresh() -> void:
 	get_tree().create_timer(0.3).timeout.connect(_refresh_all)
 
 
+func _on_git_status_ready(status: Dictionary) -> void:
+	_cached_status = status
+	_has_cached_status = true
+
+
 func _refresh_all() -> void:
-	_refresh_changes()
+	if _has_cached_status:
+		var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+		_apply_changes_data(_cached_status, patterns)
+	else:
+		_refresh_changes()
 	_refresh_browse()
 
 
@@ -65,9 +109,25 @@ func _refresh_changes() -> void:
 		_populate_status_list(staged_list, [], GitStatusRow.ActionMode.UNSTAGE)
 		_populate_status_list(unstaged_list, [], GitStatusRow.ActionMode.STAGE)
 		return
+	if _changes_in_progress:
+		return
+	_changes_in_progress = true
+	if _changes_thread and _changes_thread.is_started():
+		_changes_thread.wait_to_finish()
+	_changes_thread = Thread.new()
+	_changes_thread.start(_refresh_changes_worker)
 
+
+func _refresh_changes_worker() -> void:
 	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var status: Dictionary = git_backend.get_status()
+	call_deferred("_apply_changes_data", status, patterns)
+
+
+func _apply_changes_data(status: Dictionary, patterns: PackedStringArray) -> void:
+	if _changes_thread and _changes_thread.is_started():
+		_changes_thread.wait_to_finish()
+	_changes_in_progress = false
 
 	var staged := _filter_by_patterns(status.get("staged", []), patterns)
 	_populate_status_list(staged_list, staged, GitStatusRow.ActionMode.UNSTAGE)
@@ -113,14 +173,37 @@ func _populate_status_list(list: VBoxContainer, entries: Array, mode: int) -> vo
 
 
 func _refresh_browse() -> void:
-	for child in browse_list.get_children():
-		child.queue_free()
-
 	if project_root.is_empty():
+		for child in browse_list.get_children():
+			child.queue_free()
 		return
+	if _browse_in_progress:
+		return
+	_browse_in_progress = true
+	if _browse_thread and _browse_thread.is_started():
+		_browse_thread.wait_to_finish()
+	rescan_button.disabled = true
+	lfs_scan_status_label.text = "Scanning..."
+	lfs_scan_status_label.visible = true
+	_browse_thread = Thread.new()
+	_browse_thread.start(_refresh_browse_worker, Thread.PRIORITY_LOW)
 
+
+func _refresh_browse_worker() -> void:
 	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var files := LfsScanner.scan_files_matching_patterns(project_root, patterns)
+	call_deferred("_apply_browse_data", files)
+
+
+func _apply_browse_data(files: PackedStringArray) -> void:
+	if _browse_thread and _browse_thread.is_started():
+		_browse_thread.wait_to_finish()
+	_browse_in_progress = false
+	rescan_button.disabled = false
+	lfs_scan_status_label.visible = false
+
+	for child in browse_list.get_children():
+		child.queue_free()
 
 	if files.is_empty():
 		var empty_label := Label.new()
@@ -139,9 +222,26 @@ func _refresh_browse() -> void:
 func _on_poll_timeout() -> void:
 	if not repo_open or not is_visible_in_tree() or not git_backend:
 		return
+	if _changes_in_progress or _poll_check_in_progress:
+		return
+	_poll_check_in_progress = true
+	if _poll_thread and _poll_thread.is_started():
+		_poll_thread.wait_to_finish()
+	_poll_thread = Thread.new()
+	_poll_thread.start(_poll_signature_worker)
+
+
+func _poll_signature_worker() -> void:
 	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var status: Dictionary = git_backend.get_status()
 	var sig := {"status": status, "patterns": patterns}
+	call_deferred("_apply_poll_signature", sig)
+
+
+func _apply_poll_signature(sig: Dictionary) -> void:
+	if _poll_thread and _poll_thread.is_started():
+		_poll_thread.wait_to_finish()
+	_poll_check_in_progress = false
 	if sig != _last_signature:
 		_refresh_changes()
 
