@@ -2,6 +2,8 @@
 extends Control
 
 signal status_ready(status: Dictionary)
+signal refresh_data_ready(data: Dictionary)
+signal poll_signature_ready(sig: Dictionary)
 
 const MAX_HISTORY: int = 300
 const HISTORY_PREVIEW_COUNT: int = 5
@@ -42,7 +44,10 @@ var _poll_check_in_progress: bool = false
 @onready var commit_message_edit: TextEdit = %CommitMessageEdit
 @onready var commit_button: Button = %CommitButton
 @onready var branches_view = %Branches
+@onready var stash_view = %Stash
 @onready var error_dialog: AcceptDialog = %ErrorDialog
+@onready var repo_state_banner: Control = %RepoStateBanner
+@onready var repo_state_label: Label = %RepoStateLabel
 
 @onready var center_area: Control = %CenterArea
 @onready var view_host: Control = %ViewHost
@@ -73,14 +78,20 @@ func _ready() -> void:
 	branch_menu_button.get_popup().id_pressed.connect(_on_branch_menu_id_pressed)
 	commit_button.pressed.connect(_on_commit_pressed)
 	branches_view.checkout_requested.connect(_checkout_branch)
+	branches_view.checkout_remote_requested.connect(_checkout_remote_branch)
 	branches_view.create_branch_requested.connect(_on_create_branch_requested)
 	branches_view.merge_requested.connect(_on_merge_requested)
+
+	stash_view.stash_apply_requested.connect(_on_stash_apply_requested)
+	stash_view.stash_drop_requested.connect(_on_stash_drop_requested)
 
 	diff_view.file_selected.connect(_on_diff_file_selected)
 	staging_view.file_selected.connect(_on_staging_file_selected)
 	staging_view.stage_requested.connect(_on_stage_requested)
 	staging_view.unstage_requested.connect(_on_unstage_requested)
 	file_detail_view.back_requested.connect(_on_file_detail_back)
+	refresh_data_ready.connect(_apply_refresh_data)
+	poll_signature_ready.connect(_apply_poll_signature)
 
 	fetch_button.pressed.connect(_on_fetch_pressed)
 	pull_button.pressed.connect(_on_pull_pressed)
@@ -117,9 +128,9 @@ func set_polling_active(active: bool) -> void:
 
 
 func _exit_tree() -> void:
-	if _refresh_thread:
+	if _refresh_thread and _refresh_thread.is_started():
 		_refresh_thread.wait_to_finish()
-	if _poll_thread:
+	if _poll_thread and _poll_thread.is_started():
 		_poll_thread.wait_to_finish()
 
 
@@ -154,8 +165,6 @@ func _refresh() -> void:
 	if _refresh_in_progress:
 		return
 	_refresh_in_progress = true
-	if _refresh_thread:
-		_refresh_thread.wait_to_finish()
 	_refresh_thread = Thread.new()
 	_refresh_thread.start(_refresh_worker)
 
@@ -169,12 +178,17 @@ func _refresh_worker() -> void:
 	data["diff_head"] = git_backend.get_diff_head()
 	data["staged_diff"] = git_backend.get_staged_diff()
 	data["unstaged_diff"] = git_backend.get_unstaged_diff()
-	call_deferred("_apply_refresh_data", data)
+	var repo_state: String = git_backend.get_repository_state()
+	data["repo_state"] = repo_state
+	data["rebase_progress"] = git_backend.get_rebase_progress() if repo_state == "rebase" else {}
+	data["stashes"] = git_backend.list_stashes()
+	call_deferred("emit_signal", "refresh_data_ready", data)
 
 
 func _apply_refresh_data(data: Dictionary) -> void:
-	if _refresh_thread:
+	if _refresh_thread and _refresh_thread.is_started():
 		_refresh_thread.wait_to_finish()
+	_refresh_thread = null
 	_refresh_in_progress = false
 
 	var branches: Array = data["branches"]
@@ -199,6 +213,9 @@ func _apply_refresh_data(data: Dictionary) -> void:
 	staging_view.load_diffs(data["staged_diff"], data["unstaged_diff"])
 	history_graph.load_history(history)
 
+	_update_repo_state_banner(data["repo_state"], data["rebase_progress"])
+	stash_view.load_stashes(data["stashes"])
+
 	var current_view := _get_current_view_name()
 	if current_view.is_empty() or current_view == "NoRepoView":
 		current_view = "DiffView"
@@ -207,11 +224,15 @@ func _apply_refresh_data(data: Dictionary) -> void:
 	var top_hash := ""
 	if history.size() > 0:
 		top_hash = (history[0] as Dictionary).get("hash", "")
+	var stashes: Array = data["stashes"]
 	_last_signature = {
 		"branch": current_branch,
 		"status": status,
 		"top_hash": top_hash,
 		"branches": branches,
+		"repo_state": data["repo_state"],
+		"stash_count": stashes.size(),
+		"stash_top_oid": (stashes[0] as Dictionary).get("oid", "") if stashes.size() > 0 else "",
 	}
 
 	_refresh_pull_indicator()
@@ -223,20 +244,19 @@ func _on_poll_timeout() -> void:
 	if _refresh_in_progress or _poll_check_in_progress:
 		return
 	_poll_check_in_progress = true
-	if _poll_thread:
-		_poll_thread.wait_to_finish()
 	_poll_thread = Thread.new()
 	_poll_thread.start(_poll_signature_worker)
 
 
 func _poll_signature_worker() -> void:
 	var sig := _compute_poll_signature()
-	call_deferred("_apply_poll_signature", sig)
+	call_deferred("emit_signal", "poll_signature_ready", sig)
 
 
 func _apply_poll_signature(sig: Dictionary) -> void:
-	if _poll_thread:
+	if _poll_thread and _poll_thread.is_started():
 		_poll_thread.wait_to_finish()
+	_poll_thread = null
 	_poll_check_in_progress = false
 	if sig != _last_signature:
 		_refresh()
@@ -251,11 +271,15 @@ func _on_remote_poll_timeout() -> void:
 func _compute_poll_signature() -> Dictionary:
 	if not repo_open:
 		return {}
+	var stashes: Array = git_backend.list_stashes()
 	return {
 		"branch": git_backend.get_current_branch(),
 		"status": git_backend.get_status(),
 		"top_hash": git_backend.get_head_oid_hex(),
 		"branches": git_backend.list_branches(),
+		"repo_state": git_backend.get_repository_state(),
+		"stash_count": stashes.size(),
+		"stash_top_oid": (stashes[0] as Dictionary).get("oid", "") if stashes.size() > 0 else "",
 	}
 
 
@@ -314,6 +338,24 @@ func _on_unstage_requested(path: String) -> void:
 		_show_error("Could not unstage '%s'." % path)
 
 
+func _on_stash_apply_requested(index: int, pop: bool) -> void:
+	if not git_backend:
+		return
+	if git_backend.apply_stash(index, pop):
+		_refresh()
+	else:
+		_show_error("Could not %s stash@{%d}. There may be a conflict requiring manual resolution (use the git CLI)." % ["pop" if pop else "apply", index])
+
+
+func _on_stash_drop_requested(index: int) -> void:
+	if not git_backend:
+		return
+	if git_backend.drop_stash(index):
+		_refresh()
+	else:
+		_show_error("Could not drop stash@{%d}." % index)
+
+
 func _on_stage_all_pressed() -> void:
 	if not git_backend:
 		return
@@ -335,6 +377,34 @@ func _on_stage_all_pressed() -> void:
 func _leave_file_detail_if_showing() -> void:
 	if _get_current_view_name() == "FileDetailView":
 		_show_view(_previous_view_name)
+
+
+func _update_repo_state_banner(state: String, rebase_progress: Dictionary) -> void:
+	if state == "none" or state.is_empty():
+		repo_state_banner.visible = false
+		return
+
+	repo_state_banner.visible = true
+	match state:
+		"rebase":
+			if rebase_progress.get("in_progress", false):
+				var current: int = int(rebase_progress.get("current", 0)) + 1
+				var total: int = int(rebase_progress.get("total", 0))
+				repo_state_label.text = "Rebase in progress (step %d of %d)" % [current, total]
+			else:
+				repo_state_label.text = "Rebase in progress"
+		"merge":
+			repo_state_label.text = "Merge in progress"
+		"cherry-pick":
+			repo_state_label.text = "Cherry-pick in progress"
+		"revert":
+			repo_state_label.text = "Revert in progress"
+		"bisect":
+			repo_state_label.text = "Bisect in progress"
+		"apply-mailbox":
+			repo_state_label.text = "Applying mailbox patches"
+		_:
+			repo_state_label.text = "Repository operation in progress"
 
 
 func _populate_history_preview(history: Array) -> void:
@@ -400,6 +470,15 @@ func _checkout_branch(branch_name: String) -> void:
 		_refresh()
 	else:
 		_show_error("Could not check out branch '%s'. Commit or discard local changes first." % branch_name)
+
+
+func _checkout_remote_branch(remote_ref_name: String) -> void:
+	if not git_backend:
+		return
+	if git_backend.checkout_remote_branch(remote_ref_name):
+		_refresh()
+	else:
+		_show_error("Could not check out remote branch '%s'. It may already have a differently-named local tracking branch, or local changes conflict." % remote_ref_name)
 
 
 func _on_commit_pressed() -> void:

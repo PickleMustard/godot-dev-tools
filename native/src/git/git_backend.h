@@ -32,6 +32,7 @@ private:
 	String get_current_branch_raw_name() const;
 	int merge_annotated_into_current(const String &source_display_name, git_annotated_commit *their_head,
 			const String &target, String *out_error_message);
+	bool checkout_ref_and_move_head(git_reference *ref, const String &local_branch_name);
 
 	static int credentials_cb(git_credential **out, const char *url, const char *username_from_url,
 			unsigned int allowed_types, void *payload);
@@ -56,11 +57,19 @@ public:
 
 	TypedArray<Dictionary> list_branches() const;
 	bool checkout_branch(const String &name);
+	bool checkout_remote_branch(const String &remote_ref_name);
 	bool create_branch(const String &name, bool checkout_after);
 	int merge_branch(const String &source, const String &target);
 	bool commit_staged(const String &message) const;
 	bool stage_file(const String &path) const;
 	bool unstage_file(const String &path) const;
+
+	String get_repository_state() const;
+	Dictionary get_rebase_progress() const;
+
+	TypedArray<Dictionary> list_stashes() const;
+	bool apply_stash(int index, bool pop) const;
+	bool drop_stash(int index) const;
 
 	Dictionary get_ahead_behind(const String &remote_name = "origin") const;
 	bool start_fetch(const String &remote_name = "origin");

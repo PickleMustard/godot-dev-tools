@@ -141,6 +141,16 @@ int diff_line_cb(const git_diff_delta *, const git_diff_hunk *, const git_diff_l
 	return 0;
 }
 
+int stash_foreach_cb(size_t index, const char *message, const git_oid *stash_id, void *payload) {
+	TypedArray<Dictionary> *stashes = static_cast<TypedArray<Dictionary> *>(payload);
+	Dictionary d;
+	d["index"] = (int)index;
+	d["message"] = String::utf8(message ? message : "");
+	d["oid"] = String(oid_to_hex(*stash_id).c_str());
+	stashes->push_back(d);
+	return 0;
+}
+
 } // namespace
 
 void GitBackend::_bind_methods() {
@@ -156,11 +166,19 @@ void GitBackend::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("list_branches"), &GitBackend::list_branches);
 	ClassDB::bind_method(D_METHOD("checkout_branch", "name"), &GitBackend::checkout_branch);
+	ClassDB::bind_method(D_METHOD("checkout_remote_branch", "remote_ref_name"), &GitBackend::checkout_remote_branch);
 	ClassDB::bind_method(D_METHOD("create_branch", "name", "checkout_after"), &GitBackend::create_branch);
 	ClassDB::bind_method(D_METHOD("merge_branch", "source", "target"), &GitBackend::merge_branch);
 	ClassDB::bind_method(D_METHOD("commit_staged", "message"), &GitBackend::commit_staged);
 	ClassDB::bind_method(D_METHOD("stage_file", "path"), &GitBackend::stage_file);
 	ClassDB::bind_method(D_METHOD("unstage_file", "path"), &GitBackend::unstage_file);
+
+	ClassDB::bind_method(D_METHOD("get_repository_state"), &GitBackend::get_repository_state);
+	ClassDB::bind_method(D_METHOD("get_rebase_progress"), &GitBackend::get_rebase_progress);
+
+	ClassDB::bind_method(D_METHOD("list_stashes"), &GitBackend::list_stashes);
+	ClassDB::bind_method(D_METHOD("apply_stash", "index", "pop"), &GitBackend::apply_stash);
+	ClassDB::bind_method(D_METHOD("drop_stash", "index"), &GitBackend::drop_stash);
 
 	ClassDB::bind_method(D_METHOD("get_ahead_behind", "remote_name"), &GitBackend::get_ahead_behind, DEFVAL(String("origin")));
 	ClassDB::bind_method(D_METHOD("start_fetch", "remote_name"), &GitBackend::start_fetch, DEFVAL(String("origin")));
@@ -297,6 +315,57 @@ String GitBackend::get_current_branch() const {
 	}
 
 	git_reference_free(head_ref);
+	return result;
+}
+
+String GitBackend::get_repository_state() const {
+	MutexLock lock(**repo_mutex);
+	if (!repo) {
+		return String("none");
+	}
+	switch (git_repository_state(repo)) {
+		case GIT_REPOSITORY_STATE_MERGE:
+			return String("merge");
+		case GIT_REPOSITORY_STATE_REVERT:
+		case GIT_REPOSITORY_STATE_REVERT_SEQUENCE:
+			return String("revert");
+		case GIT_REPOSITORY_STATE_CHERRYPICK:
+		case GIT_REPOSITORY_STATE_CHERRYPICK_SEQUENCE:
+			return String("cherry-pick");
+		case GIT_REPOSITORY_STATE_BISECT:
+			return String("bisect");
+		case GIT_REPOSITORY_STATE_REBASE:
+		case GIT_REPOSITORY_STATE_REBASE_INTERACTIVE:
+		case GIT_REPOSITORY_STATE_REBASE_MERGE:
+			return String("rebase");
+		case GIT_REPOSITORY_STATE_APPLY_MAILBOX:
+		case GIT_REPOSITORY_STATE_APPLY_MAILBOX_OR_REBASE:
+			return String("apply-mailbox");
+		default:
+			return String("none");
+	}
+}
+
+Dictionary GitBackend::get_rebase_progress() const {
+	MutexLock lock(**repo_mutex);
+	Dictionary result;
+	result["in_progress"] = false;
+	if (!repo) {
+		return result;
+	}
+
+	git_rebase *rebase = nullptr;
+	if (git_rebase_open(&rebase, repo, nullptr) != 0) {
+		return result;
+	}
+
+	size_t total = git_rebase_operation_entrycount(rebase);
+	size_t current = git_rebase_operation_current(rebase);
+	result["in_progress"] = true;
+	result["total"] = (int)total;
+	result["current"] = (current == GIT_REBASE_NO_OPERATION) ? 0 : (int)current;
+
+	git_rebase_free(rebase);
 	return result;
 }
 
@@ -461,8 +530,8 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool includ
 		return result;
 	}
 
-	// oid hex -> short ref names (branch heads + tags) pointing at that commit.
-	std::unordered_map<std::string, std::vector<std::string>> refs_by_oid;
+	// oid hex -> (name, kind) refs ("branch"/"remote"/"tag") pointing at that commit.
+	std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> refs_by_oid;
 	if (include_refs) {
 		git_reference_iterator *ref_iter = nullptr;
 		if (git_reference_iterator_new(&ref_iter, repo) == 0) {
@@ -471,7 +540,12 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool includ
 				const char *ref_name = git_reference_name(ref);
 				bool is_branch = ref_name && strncmp(ref_name, "refs/heads/", 11) == 0;
 				bool is_tag = ref_name && strncmp(ref_name, "refs/tags/", 10) == 0;
-				if (is_branch || is_tag) {
+				bool is_remote = ref_name && strncmp(ref_name, "refs/remotes/", 13) == 0;
+				// Skip the remote's symbolic HEAD alias (e.g. refs/remotes/origin/HEAD) —
+				// it just duplicates whichever branch the remote's default points at.
+				bool is_symbolic_head = is_remote && ref_name && strlen(ref_name) >= 5 &&
+						strcmp(ref_name + strlen(ref_name) - 5, "/HEAD") == 0;
+				if ((is_branch || is_tag || is_remote) && !is_symbolic_head) {
 					git_oid target_oid;
 					bool have_oid = false;
 					if (git_reference_type(ref) == GIT_REFERENCE_DIRECT) {
@@ -494,7 +568,9 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool includ
 					}
 					if (have_oid) {
 						std::string key = oid_to_hex(target_oid);
-						refs_by_oid[key].push_back(std::string(ref_name + (is_branch ? 11 : 10)));
+						int prefix_len = is_branch ? 11 : (is_tag ? 10 : 13);
+						std::string kind = is_branch ? "branch" : (is_tag ? "tag" : "remote");
+						refs_by_oid[key].push_back(std::make_pair(std::string(ref_name + prefix_len), kind));
 					}
 				}
 				git_reference_free(ref);
@@ -522,7 +598,7 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool includ
 		int64_t time = 0;
 		int lane = 0;
 		std::vector<int> parent_lanes;
-		std::vector<std::string> refs;
+		std::vector<std::pair<std::string, std::string>> refs;
 	};
 
 	std::vector<CommitData> commits;
@@ -658,8 +734,11 @@ TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool includ
 		}
 		d["parent_lanes"] = parent_lanes_arr;
 		Array refs_arr;
-		for (const std::string &r : c.refs) {
-			refs_arr.push_back(String(r.c_str()));
+		for (const auto &r : c.refs) {
+			Dictionary ref_d;
+			ref_d["name"] = String::utf8(r.first.c_str());
+			ref_d["kind"] = String(r.second.c_str());
+			refs_arr.push_back(ref_d);
 		}
 		d["refs"] = refs_arr;
 		result.push_back(d);
@@ -725,34 +804,112 @@ TypedArray<Dictionary> GitBackend::list_branches() const {
 	}
 
 	git_branch_iterator *iter = nullptr;
-	if (git_branch_iterator_new(&iter, repo, GIT_BRANCH_LOCAL) != 0) {
+	if (git_branch_iterator_new(&iter, repo, GIT_BRANCH_ALL) != 0) {
 		return result;
 	}
 
-	std::vector<std::pair<std::string, bool>> entries;
+	struct BranchEntry {
+		std::string name;
+		bool is_current;
+		bool is_remote;
+		std::string target_oid;
+	};
+
+	std::vector<BranchEntry> entries;
 	git_reference *ref = nullptr;
 	git_branch_t type;
 	while (git_branch_next(&ref, &type, iter) == 0) {
 		const char *name = nullptr;
 		if (git_branch_name(&name, ref) == 0 && name) {
-			entries.push_back(std::make_pair(std::string(name), git_branch_is_head(ref) == 1));
+			std::string name_str(name);
+			bool is_symbolic_head = name_str.size() >= 5 && name_str.compare(name_str.size() - 5, 5, "/HEAD") == 0;
+			if (is_symbolic_head) {
+				git_reference_free(ref);
+				continue;
+			}
+			BranchEntry entry;
+			entry.name = name;
+			entry.is_current = git_branch_is_head(ref) == 1;
+			entry.is_remote = type == GIT_BRANCH_REMOTE;
+
+			git_oid target_oid;
+			bool have_oid = false;
+			if (git_reference_type(ref) == GIT_REFERENCE_DIRECT) {
+				const git_oid *direct = git_reference_target(ref);
+				if (direct) {
+					target_oid = *direct;
+					have_oid = true;
+				}
+			}
+			if (!have_oid) {
+				git_object *peeled = nullptr;
+				if (git_reference_peel(&peeled, ref, GIT_OBJECT_COMMIT) == 0 && peeled) {
+					const git_oid *peeled_oid = git_object_id(peeled);
+					if (peeled_oid) {
+						target_oid = *peeled_oid;
+						have_oid = true;
+					}
+					git_object_free(peeled);
+				}
+			}
+			if (have_oid) {
+				entry.target_oid = oid_to_hex(target_oid);
+			}
+
+			entries.push_back(entry);
 		}
 		git_reference_free(ref);
 	}
 	git_branch_iterator_free(iter);
 
-	std::sort(entries.begin(), entries.end(), [](const std::pair<std::string, bool> &a, const std::pair<std::string, bool> &b) {
-		return a.first < b.first;
+	std::sort(entries.begin(), entries.end(), [](const BranchEntry &a, const BranchEntry &b) {
+		if (a.is_remote != b.is_remote) {
+			return !a.is_remote;
+		}
+		return a.name < b.name;
 	});
 
 	for (const auto &entry : entries) {
 		Dictionary d;
-		d["name"] = String::utf8(entry.first.c_str());
-		d["is_current"] = entry.second;
+		d["name"] = String::utf8(entry.name.c_str());
+		d["is_current"] = entry.is_current;
+		d["is_remote"] = entry.is_remote;
+		d["target_oid"] = String(entry.target_oid.c_str());
 		result.push_back(d);
 	}
 
 	return result;
+}
+
+bool GitBackend::checkout_ref_and_move_head(git_reference *ref, const String &local_branch_name) {
+	git_object *target_obj = nullptr;
+	if (git_reference_peel(&target_obj, ref, GIT_OBJECT_COMMIT) != 0) {
+		UtilityFunctions::push_warning("GitBackend: could not resolve commit for branch '", local_branch_name, "'.");
+		return false;
+	}
+
+	git_checkout_options checkout_opts = GIT_CHECKOUT_OPTIONS_INIT;
+	checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE;
+
+	int rc = git_checkout_tree(repo, target_obj, &checkout_opts);
+	git_object_free(target_obj);
+
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: checkout of '", local_branch_name, "' failed (uncommitted changes conflict?): ",
+				(err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+
+	String refname = String("refs/heads/") + local_branch_name;
+	rc = git_repository_set_head(repo, refname.utf8().get_data());
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to move HEAD to '", local_branch_name, "': ",
+				(err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
 }
 
 bool GitBackend::checkout_branch(const String &name) {
@@ -767,37 +924,66 @@ bool GitBackend::checkout_branch(const String &name) {
 		return false;
 	}
 
-	git_object *target_obj = nullptr;
-	if (git_reference_peel(&target_obj, branch_ref, GIT_OBJECT_COMMIT) != 0) {
-		git_reference_free(branch_ref);
-		UtilityFunctions::push_warning("GitBackend: could not resolve commit for branch '", name, "'.");
-		return false;
-	}
-
-	git_checkout_options checkout_opts = GIT_CHECKOUT_OPTIONS_INIT;
-	checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE;
-
-	int rc = git_checkout_tree(repo, target_obj, &checkout_opts);
-	git_object_free(target_obj);
-
-	if (rc != 0) {
-		const git_error *err = git_error_last();
-		git_reference_free(branch_ref);
-		UtilityFunctions::push_warning("GitBackend: checkout of '", name, "' failed (uncommitted changes conflict?): ",
-				(err && err->message) ? err->message : "unknown error");
-		return false;
-	}
-
-	String refname = String("refs/heads/") + name;
-	rc = git_repository_set_head(repo, refname.utf8().get_data());
+	bool ok = checkout_ref_and_move_head(branch_ref, name);
 	git_reference_free(branch_ref);
+	return ok;
+}
+
+bool GitBackend::checkout_remote_branch(const String &remote_ref_name) {
+	MutexLock lock(**repo_mutex);
+	if (!repo) {
+		return false;
+	}
+
+	int slash = remote_ref_name.find("/");
+	if (slash == -1) {
+		UtilityFunctions::push_warning("GitBackend: '", remote_ref_name, "' is not a valid remote-tracking branch name.");
+		return false;
+	}
+	String local_name = remote_ref_name.substr(slash + 1);
+
+	String tracking_refname = String("refs/remotes/") + remote_ref_name;
+	git_reference *remote_ref = nullptr;
+	if (git_reference_lookup(&remote_ref, repo, tracking_refname.utf8().get_data()) != 0) {
+		UtilityFunctions::push_warning("GitBackend: remote-tracking branch '", remote_ref_name, "' not found.");
+		return false;
+	}
+
+	// If a local branch with this name already exists, just check it out directly.
+	git_reference *existing_local = lookup_branch_ref(local_name);
+	if (existing_local) {
+		bool ok = checkout_ref_and_move_head(existing_local, local_name);
+		git_reference_free(existing_local);
+		git_reference_free(remote_ref);
+		return ok;
+	}
+
+	git_object *remote_commit_obj = nullptr;
+	if (git_reference_peel(&remote_commit_obj, remote_ref, GIT_OBJECT_COMMIT) != 0) {
+		git_reference_free(remote_ref);
+		UtilityFunctions::push_warning("GitBackend: could not resolve commit for '", remote_ref_name, "'.");
+		return false;
+	}
+
+	git_reference *new_local_ref = nullptr;
+	int rc = git_branch_create(&new_local_ref, repo, local_name.utf8().get_data(),
+			reinterpret_cast<git_commit *>(remote_commit_obj), /*force=*/0);
+	git_object_free(remote_commit_obj);
+
 	if (rc != 0) {
 		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to move HEAD to '", name, "': ",
+		git_reference_free(remote_ref);
+		UtilityFunctions::push_warning("GitBackend: failed to create local branch '", local_name, "' from '", remote_ref_name, "': ",
 				(err && err->message) ? err->message : "unknown error");
 		return false;
 	}
-	return true;
+
+	git_branch_set_upstream(new_local_ref, remote_ref_name.utf8().get_data());
+	git_reference_free(remote_ref);
+
+	bool ok = checkout_ref_and_move_head(new_local_ref, local_name);
+	git_reference_free(new_local_ref);
+	return ok;
 }
 
 bool GitBackend::create_branch(const String &name, bool checkout_after) {
@@ -1119,6 +1305,49 @@ bool GitBackend::unstage_file(const String &path) const {
 	if (rc != 0) {
 		const git_error *err = git_error_last();
 		UtilityFunctions::push_warning("GitBackend: failed to unstage '", path, "': ", (err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
+}
+
+TypedArray<Dictionary> GitBackend::list_stashes() const {
+	MutexLock lock(**repo_mutex);
+	TypedArray<Dictionary> result;
+	if (!repo) {
+		return result;
+	}
+	git_stash_foreach(repo, stash_foreach_cb, &result);
+	return result;
+}
+
+bool GitBackend::apply_stash(int index, bool pop) const {
+	MutexLock lock(**repo_mutex);
+	if (!repo || index < 0) {
+		return false;
+	}
+
+	git_stash_apply_options opts = GIT_STASH_APPLY_OPTIONS_INIT;
+	int rc = pop ? git_stash_pop(repo, (size_t)index, &opts) : git_stash_apply(repo, (size_t)index, &opts);
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to ", pop ? "pop" : "apply", " stash@{", index, "}: ",
+				(err && err->message) ? err->message : "unknown error");
+		return false;
+	}
+	return true;
+}
+
+bool GitBackend::drop_stash(int index) const {
+	MutexLock lock(**repo_mutex);
+	if (!repo || index < 0) {
+		return false;
+	}
+
+	int rc = git_stash_drop(repo, (size_t)index);
+	if (rc != 0) {
+		const git_error *err = git_error_last();
+		UtilityFunctions::push_warning("GitBackend: failed to drop stash@{", index, "}: ",
+				(err && err->message) ? err->message : "unknown error");
 		return false;
 	}
 	return true;

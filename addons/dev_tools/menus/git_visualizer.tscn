@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_visualizer.gd" id="1"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_diff_view.gd" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_branches_view.gd" id="5"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_side_by_side_view.gd" id="6"]
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/git_file_list.gd" id="7"]
+[ext_resource type="Script" path="res://addons/dev_tools/scripts/git_stash_view.gd" id="8"]
 
 [sub_resource type="StyleBoxFlat" id="1"]
 content_margin_left = 8.0
@@ -150,6 +151,22 @@ border_color = Color(0.098, 0.105, 0.131, 1)
 corner_radius_top_left = 3
 corner_radius_top_right = 3
 
+[sub_resource type="StyleBoxFlat" id="12"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.32, 0.24, 0.08, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.4, 0.1, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
 [node name="GitVisualizer" type="Control"]
 anchors_preset = 15
 anchor_right = 1.0
@@ -193,6 +210,23 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="RepoStateBanner" type="PanelContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("12")
+
+[node name="RepoStateLabel" type="Label" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar/RepoStateBanner"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
+text = "Repository operation in progress"
+autowrap_mode = 2
 
 [node name="RemoteToolbar" type="HBoxContainer" parent="OuterFrame/MainTabs/Overview/SidebarScroll/Sidebar"]
 unique_name_in_owner = true
@@ -545,6 +579,26 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Checkout Selected Branch"
 
+[node name="RemoteBranchesListHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="RemoteBranchesListHeader" type="Label" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox/RemoteBranchesListHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Remote Branches"
+
+[node name="RemoteBranchesList" type="ItemList" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CheckoutSelectedRemoteButton" type="Button" parent="OuterFrame/MainTabs/Branches/BranchesRoot/BranchesListSection/BranchesListBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Checkout / Track Remote Branch"
+
 [node name="CreateBranchSection" type="PanelContainer" parent="OuterFrame/MainTabs/Branches/BranchesRoot"]
 layout_mode = 2
 theme_override_styles/panel = SubResource("4")
@@ -622,6 +676,64 @@ size_flags_horizontal = 3
 unique_name_in_owner = true
 layout_mode = 2
 text = "Create Pull Request (Merge)"
+
+[node name="Stash" type="MarginContainer" parent="OuterFrame/MainTabs"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+script = ExtResource("8")
+
+[node name="StashRoot" type="VBoxContainer" parent="OuterFrame/MainTabs/Stash"]
+layout_mode = 2
+
+[node name="StashListSection" type="PanelContainer" parent="OuterFrame/MainTabs/Stash/StashRoot"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("2")
+
+[node name="StashListBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection"]
+layout_mode = 2
+
+[node name="StashListHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="StashListHeader" type="Label" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox/StashListHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "Stashes"
+
+[node name="StashList" type="ItemList" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="StashButtonRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox"]
+layout_mode = 2
+
+[node name="StashApplyButton" type="Button" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox/StashButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "Apply"
+
+[node name="StashPopButton" type="Button" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox/StashButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "Pop"
+
+[node name="StashDropButton" type="Button" parent="OuterFrame/MainTabs/Stash/StashRoot/StashListSection/StashListBox/StashButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "Drop"
 
 [node name="ErrorDialog" type="AcceptDialog" parent="."]
 unique_name_in_owner = true
