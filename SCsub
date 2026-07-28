@@ -4,6 +4,7 @@ Import("env")
 Import("env_modules")
 
 env_dev_tools_git = env_modules.Clone()
+env_dev_tools_git.Append(CPPPATH=[Dir(".")])
 env_dev_tools_git.add_source_files(env.modules_sources, "*.cpp")
 env_dev_tools_git.add_source_files(env.modules_sources, "git/*.cpp")
 env_dev_tools_git.add_source_files(env.modules_sources, "lfs/*.cpp")
