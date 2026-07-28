@@ -124,7 +124,7 @@ bool is_binary_sample(const PackedByteArray &bytes) {
 void LfsScanner::_bind_methods() {
 	ClassDB::bind_static_method("LfsScanner", D_METHOD("scan_binary_extensions", "root_path", "sample_bytes"), &LfsScanner::scan_binary_extensions, DEFVAL(DEFAULT_SAMPLE_BYTES));
 	ClassDB::bind_static_method("LfsScanner", D_METHOD("scan_files_matching_patterns", "root_path", "patterns"), &LfsScanner::scan_files_matching_patterns);
-	ClassDB::bind_static_method("LfsScanner", D_METHOD("walk_files", "dir_path", "visit_file"), &LfsScanner::walk_files);
+	ClassDB::bind_static_method("LfsScanner", D_METHOD("walk_files", "dir_path", "visit_file"), static_cast<void (*)(const String &, const Callable &)>(&LfsScanner::walk_files));
 }
 
 void LfsScanner::walk_files(const String &dir_path, const Callable &visit_file) {
