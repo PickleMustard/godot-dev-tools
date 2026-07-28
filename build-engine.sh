@@ -69,6 +69,9 @@ DEV_TOOLS_HEAD="$(git -C "$DEV_TOOLS_DIR" rev-parse HEAD)"
 echo "==> godot-custom: submodule status before sync"
 git -C "$GODOT_CUSTOM_DIR" submodule status modules/dev_tools_git
 
+echo "==> godot-custom: fetching submodule origin (github)"
+git -C "$GODOT_CUSTOM_DIR/modules/dev_tools_git" fetch origin
+
 echo "==> godot-custom: checking out dev_tools HEAD ($DEV_TOOLS_HEAD) in submodule"
 git -C "$GODOT_CUSTOM_DIR/modules/dev_tools_git" checkout "$DEV_TOOLS_HEAD"
 
