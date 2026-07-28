@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+
+Import("env")
+Import("env_modules")
+
+env_dev_tools_git = env_modules.Clone()
+env_dev_tools_git.add_source_files(env.modules_sources, "git/*.cpp")
+env_dev_tools_git.ParseConfig("pkg-config --cflags --libs libgit2")
