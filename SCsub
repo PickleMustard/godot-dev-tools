@@ -7,3 +7,8 @@ env_dev_tools_git = env_modules.Clone()
 env_dev_tools_git.add_source_files(env.modules_sources, "*.cpp")
 env_dev_tools_git.add_source_files(env.modules_sources, "git/*.cpp")
 env_dev_tools_git.ParseConfig("pkg-config --cflags --libs libgit2")
+
+# LIBS/LIBPATH added to a cloned env only affect how our own objects compile --
+# the final engine binary is linked against the top-level `env`, which never
+# sees them otherwise. Re-apply there too so `-lgit2` reaches the link line.
+env.ParseConfig("pkg-config --cflags --libs libgit2")
