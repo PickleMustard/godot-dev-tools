@@ -32,4 +32,6 @@ public:
 	static bool is_expected_lfs_divergence(const String &project_root, const String &relative_path, const PackedStringArray &patterns, const Dictionary &manifest);
 };
 
+VARIANT_ENUM_CAST(LfsStatusScanner::Status);
+
 #endif // LFS_STATUS_SCANNER_H

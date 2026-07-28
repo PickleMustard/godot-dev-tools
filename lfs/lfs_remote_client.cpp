@@ -236,8 +236,7 @@ Dictionary LfsRemoteClient::_upload_via_http_client(const String &href, const Di
 		host = host.substr(0, colon_idx);
 	}
 
-	Ref<HTTPClient> client;
-	client.instantiate();
+	Ref<HTTPClient> client = Ref<HTTPClient>(HTTPClient::create());
 	Error connect_err = client->connect_to_host(host, port, use_ssl ? TLSOptions::client() : Ref<TLSOptions>());
 	if (connect_err != OK) {
 		Dictionary result;
@@ -265,7 +264,7 @@ Dictionary LfsRemoteClient::_upload_via_http_client(const String &href, const Di
 		request_headers.push_back(vformat("%s: %s", header_keys[i], header[header_keys[i]]));
 	}
 
-	Error request_err = client->request_raw(HTTPClient::METHOD_PUT, path, request_headers, bytes);
+	Error request_err = client->request(HTTPClient::METHOD_PUT, path, request_headers, bytes.ptr(), bytes.size());
 	if (request_err != OK) {
 		Dictionary result;
 		result["ok"] = false;

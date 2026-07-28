@@ -20,7 +20,7 @@ protected:
 
 private:
 	String project_root;
-	Ref<LfsRemoteClient> remote_client;
+	LfsRemoteClient *remote_client = nullptr;
 	String remote_url;
 
 	Array _entries;
@@ -35,7 +35,7 @@ private:
 	void _fail_step(const String &relative_path);
 
 public:
-	void setup(const String &p_project_root, const Ref<LfsRemoteClient> &p_remote_client, const String &p_remote_url);
+	void setup(const String &p_project_root, LfsRemoteClient *p_remote_client, const String &p_remote_url);
 
 	// entries: Array[{"path": String, "oid": String, "size": int}]
 	void start(const Array &entries);

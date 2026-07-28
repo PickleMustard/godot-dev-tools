@@ -30,7 +30,7 @@ protected:
 private:
 	String project_root;
 	Ref<GitBackend> git_backend;
-	Ref<LfsRemoteClient> remote_client;
+	LfsRemoteClient *remote_client = nullptr;
 	String remote_url;
 
 	Array _to_migrate_in;
@@ -66,7 +66,7 @@ private:
 	static bool _write_bytes(const String &path, const PackedByteArray &bytes);
 
 public:
-	void setup(const String &p_project_root, const Ref<GitBackend> &p_git_backend, const Ref<LfsRemoteClient> &p_remote_client, const String &p_remote_url);
+	void setup(const String &p_project_root, const Ref<GitBackend> &p_git_backend, LfsRemoteClient *p_remote_client, const String &p_remote_url);
 
 	// Safe to call from a background Thread.
 	// Returns {"to_migrate_in": Array[String], "to_migrate_out": Array[String]}.

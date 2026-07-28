@@ -35,7 +35,7 @@ LfsRebuildService::~LfsRebuildService() {
 	}
 }
 
-void LfsRebuildService::setup(const String &p_project_root, const Ref<GitBackend> &p_git_backend, const Ref<LfsRemoteClient> &p_remote_client, const String &p_remote_url) {
+void LfsRebuildService::setup(const String &p_project_root, const Ref<GitBackend> &p_git_backend, LfsRemoteClient *p_remote_client, const String &p_remote_url) {
 	project_root = p_project_root;
 	git_backend = p_git_backend;
 	remote_client = p_remote_client;
@@ -98,7 +98,7 @@ void LfsRebuildService::_resolve_next_migrate_out() {
 		return;
 	}
 
-	if (remote_url.is_empty() || remote_client.is_null()) {
+	if (remote_url.is_empty() || remote_client == nullptr) {
 		_fail_migrate_out_step(relative_path);
 		return;
 	}

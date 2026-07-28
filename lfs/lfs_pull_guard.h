@@ -37,7 +37,7 @@ private:
 
 	String project_root;
 	String remote_url;
-	Ref<LfsRemoteClient> remote_client;
+	LfsRemoteClient *remote_client = nullptr;
 
 	Array _paths;
 	int _index = 0;
@@ -62,7 +62,7 @@ public:
 	static Dictionary snapshot(const String &project_root, const PackedStringArray &tracked_patterns);
 	static PackedStringArray quarantine_changed_pointers(const String &project_root, const PackedStringArray &tracked_patterns, const Dictionary &pre_snapshot);
 
-	void repair(const String &p_project_root, const String &p_remote_url, const Ref<LfsRemoteClient> &p_remote_client, const PackedStringArray &quarantined_paths);
+	void repair(const String &p_project_root, const String &p_remote_url, LfsRemoteClient *p_remote_client, const PackedStringArray &quarantined_paths);
 
 	~LfsPullGuard();
 };

@@ -18,7 +18,7 @@ void LfsPushService::_bind_methods() {
 			PropertyInfo(Variant::ARRAY, "failed_paths")));
 }
 
-void LfsPushService::setup(const String &p_project_root, const Ref<LfsRemoteClient> &p_remote_client, const String &p_remote_url) {
+void LfsPushService::setup(const String &p_project_root, LfsRemoteClient *p_remote_client, const String &p_remote_url) {
 	project_root = p_project_root;
 	remote_client = p_remote_client;
 	remote_url = p_remote_url;
@@ -44,7 +44,7 @@ void LfsPushService::_push_next() {
 	int64_t size = int64_t(entry.get("size", -1));
 	emit_signal("progress", vformat("Checking remote for '%s'...", relative_path));
 
-	if (remote_url.is_empty() || remote_client.is_null() || oid.is_empty()) {
+	if (remote_url.is_empty() || remote_client == nullptr || oid.is_empty()) {
 		_fail_step(relative_path);
 		return;
 	}
@@ -121,7 +121,7 @@ String LfsPushService::_resolve_bytes_path(const String &relative_path, const St
 	if (file.is_null()) {
 		return String();
 	}
-	PackedByteArray prefix = file->get_buffer(MIN(file->get_length(), (int64_t)256));
+	PackedByteArray prefix = file->get_buffer(MIN((int64_t)file->get_length(), (int64_t)256));
 	file->close();
 	if (LfsPointer::looks_like_pointer(prefix)) {
 		return String();

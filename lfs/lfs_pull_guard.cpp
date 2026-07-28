@@ -52,7 +52,7 @@ bool LfsPullGuard::_looks_like_pointer_file(const String &absolute_path) {
 	if (file.is_null()) {
 		return false;
 	}
-	PackedByteArray prefix = file->get_buffer(MIN(file->get_length(), (int64_t)256));
+	PackedByteArray prefix = file->get_buffer(MIN((int64_t)file->get_length(), (int64_t)256));
 	file->close();
 	return LfsPointer::looks_like_pointer(prefix);
 }
@@ -99,7 +99,7 @@ PackedStringArray LfsPullGuard::quarantine_changed_pointers(const String &projec
 	return quarantined;
 }
 
-void LfsPullGuard::repair(const String &p_project_root, const String &p_remote_url, const Ref<LfsRemoteClient> &p_remote_client, const PackedStringArray &quarantined_paths) {
+void LfsPullGuard::repair(const String &p_project_root, const String &p_remote_url, LfsRemoteClient *p_remote_client, const PackedStringArray &quarantined_paths) {
 	project_root = p_project_root;
 	remote_url = p_remote_url;
 	remote_client = p_remote_client;
@@ -146,7 +146,7 @@ void LfsPullGuard::_repair_next() {
 		return;
 	}
 
-	if (remote_url.is_empty() || remote_client.is_null()) {
+	if (remote_url.is_empty() || remote_client == nullptr) {
 		_fail_repair_step(relative_path);
 		return;
 	}

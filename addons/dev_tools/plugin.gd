@@ -2,12 +2,12 @@
 extends EditorPlugin
 
 const MainPanelScene := preload("res://addons/dev_tools/menus/dev_tools_panel.tscn")
-const GitVisualizerScene := preload("res://addons/dev_tools/menus/git_visualizer.tscn")
-const DotfilesViewScene := preload("res://addons/dev_tools/menus/dotfiles_view.tscn")
-const LfsVisualizerScene := preload("res://addons/dev_tools/menus/lfs_visualizer.tscn")
+const GitVisualizerScenePath := "res://addons/dev_tools/menus/git_visualizer.tscn"
+const DotfilesViewScenePath := "res://addons/dev_tools/menus/dotfiles_view.tscn"
+const LfsVisualizerScenePath := "res://addons/dev_tools/menus/lfs_visualizer.tscn"
 
 var main_panel: Control
-var git_backend: GitBackend
+var git_backend: Object
 var git_visualizer: Control
 var dotfiles_view: Control
 var lfs_visualizer: Control
@@ -22,28 +22,43 @@ func _enter_tree() -> void:
 
 	project_root = ProjectSettings.globalize_path("res://")
 
+	if not ClassDB.class_exists("GitBackend"):
+		push_warning("dev_tools: GitBackend/Lfs* module not present in this editor binary; Git/Dotfiles/LFS tabs disabled. See CLAUDE.md 'Git/LFS backend module'.")
+		_add_module_missing_notice()
+		return
+
 	call_deferred("_init_git_tab")
 	call_deferred("_init_dotfiles_tab")
 	call_deferred("_init_lfs_tab")
 
 
+func _add_module_missing_notice() -> void:
+	var notice := Label.new()
+	notice.text = "Git/Dotfiles/LFS tabs require a custom-built Godot editor binary with the dev_tools_git module compiled in.\nSee CLAUDE.md 'Git/LFS backend module' for build instructions."
+	notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	notice.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	notice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	notice.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_panel.add_tool_tab("Dev Tools", notice)
+
+
 func _init_git_tab() -> void:
-	git_backend = GitBackend.new()
+	git_backend = ClassDB.instantiate("GitBackend")
 	repo_open = git_backend.open_repository(project_root)
 
-	git_visualizer = GitVisualizerScene.instantiate()
+	git_visualizer = load(GitVisualizerScenePath).instantiate()
 	git_visualizer.setup(git_backend, repo_open, project_root)
 	main_panel.add_tool_tab("Git", git_visualizer)
 
 
 func _init_dotfiles_tab() -> void:
-	dotfiles_view = DotfilesViewScene.instantiate()
+	dotfiles_view = load(DotfilesViewScenePath).instantiate()
 	dotfiles_view.setup(project_root)
 	main_panel.add_tool_tab("Dotfiles", dotfiles_view)
 
 
 func _init_lfs_tab() -> void:
-	lfs_visualizer = LfsVisualizerScene.instantiate()
+	lfs_visualizer = load(LfsVisualizerScenePath).instantiate()
 	lfs_visualizer.setup(git_backend, repo_open, project_root)
 	main_panel.add_tool_tab("LFS", lfs_visualizer)
 	if git_visualizer:

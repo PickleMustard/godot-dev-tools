@@ -56,7 +56,7 @@ Dictionary LfsStatusScanner::classify_file(const String &project_root, const Str
 		d["status"] = CLEAN;
 		return d;
 	}
-	PackedByteArray prefix = prefix_file->get_buffer(MIN(prefix_file->get_length(), (int64_t)STATUS_PREFIX_SAMPLE_BYTES));
+	PackedByteArray prefix = prefix_file->get_buffer(MIN((int64_t)prefix_file->get_length(), (int64_t)STATUS_PREFIX_SAMPLE_BYTES));
 	prefix_file->close();
 
 	if (LfsPointer::looks_like_pointer(prefix)) {
