@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/lfs_visualizer.gd" id="1"]
 
@@ -226,6 +226,56 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 
+[node name="ExtensionStatusSection" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("2")
+
+[node name="ExtensionStatusBox" type="VBoxContainer" parent="OuterFrame/Root/MainScroll/Sections/ExtensionStatusSection"]
+layout_mode = 2
+
+[node name="ExtensionStatusHeaderBar" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections/ExtensionStatusSection/ExtensionStatusBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("3")
+
+[node name="ExtensionStatusHeader" type="Label" parent="OuterFrame/Root/MainScroll/Sections/ExtensionStatusSection/ExtensionStatusBox/ExtensionStatusHeaderBar"]
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
+text = "Extension Tracking Status"
+
+[node name="ExtensionStatusList" type="VBoxContainer" parent="OuterFrame/Root/MainScroll/Sections/ExtensionStatusSection/ExtensionStatusBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+
+[node name="QuarantinedSection" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("4")
+
+[node name="QuarantinedBox" type="VBoxContainer" parent="OuterFrame/Root/MainScroll/Sections/QuarantinedSection"]
+layout_mode = 2
+
+[node name="QuarantinedHeaderBar" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections/QuarantinedSection/QuarantinedBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("5")
+
+[node name="QuarantinedHeader" type="Label" parent="OuterFrame/Root/MainScroll/Sections/QuarantinedSection/QuarantinedBox/QuarantinedHeaderBar"]
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
+text = "Quarantined Files"
+
+[node name="QuarantinedList" type="VBoxContainer" parent="OuterFrame/Root/MainScroll/Sections/QuarantinedSection/QuarantinedBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+
 [node name="StatusBar" type="PanelContainer" parent="OuterFrame/Root"]
 layout_mode = 2
 theme_override_styles/panel = SubResource("8")
@@ -251,6 +301,24 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Rescan Files"
 
+[node name="PushLfsButton" type="Button" parent="OuterFrame/Root/StatusBar/StatusBarRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Push LFS Objects"
+
+[node name="RebuildLfsButton" type="Button" parent="OuterFrame/Root/StatusBar/StatusBarRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Rebuild LFS Tracking"
+
+[node name="LfsRemoteClient" type="LfsRemoteClient" parent="."]
+unique_name_in_owner = true
+
 [node name="ErrorDialog" type="AcceptDialog" parent="."]
 unique_name_in_owner = true
 title = "LFS Error"
+
+[node name="RebuildConfirmDialog" type="ConfirmationDialog" parent="."]
+unique_name_in_owner = true
+title = "Rebuild LFS Tracking"
+dialog_text = "This will migrate files into/out of LFS tracking. Continue?"

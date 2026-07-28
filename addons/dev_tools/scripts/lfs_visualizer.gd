@@ -3,6 +3,7 @@ extends Control
 
 const POLL_INTERVAL_SEC: float = 2.0
 const GitStatusRowScene = preload("res://addons/dev_tools/menus/git_status_row.tscn")
+const LfsExtensionRowScene = preload("res://addons/dev_tools/menus/lfs_extension_row.tscn")
 
 var git_backend: GitBackend
 var project_root: String = ""
@@ -20,6 +21,22 @@ var _poll_check_in_progress: bool = false
 var _cached_status: Dictionary = {}
 var _has_cached_status: bool = false
 
+var _status_thread: Thread
+var _status_in_progress: bool = false
+var _last_local_statuses: Array = []
+var _last_tracked_patterns: PackedStringArray = []
+var _remote_check_in_progress: bool = false
+
+var _rebuild_service: LfsRebuildService
+var _pending_rebuild_scan: Dictionary = {}
+var _rebuild_scan_thread: Thread
+var _rebuild_scan_in_progress: bool = false
+
+var _push_service: LfsPushService
+
+var _pre_pull_snapshot: Dictionary = {}
+var _active_pull_guard: LfsPullGuard
+
 @onready var staged_list: VBoxContainer = %LfsStagedList
 @onready var unstaged_list: VBoxContainer = %LfsUnstagedList
 @onready var browse_list: VBoxContainer = %LfsBrowseList
@@ -27,6 +44,12 @@ var _has_cached_status: bool = false
 @onready var rescan_button: Button = %RescanButton
 @onready var lfs_scan_status_label: Label = %LfsScanStatusLabel
 @onready var error_dialog: AcceptDialog = %ErrorDialog
+@onready var extension_status_list: VBoxContainer = %ExtensionStatusList
+@onready var quarantined_list: VBoxContainer = %QuarantinedList
+@onready var rebuild_button: Button = %RebuildLfsButton
+@onready var rebuild_confirm_dialog: ConfirmationDialog = %RebuildConfirmDialog
+@onready var push_lfs_button: Button = %PushLfsButton
+@onready var remote_client: LfsRemoteClient = %LfsRemoteClient
 
 
 func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
@@ -40,6 +63,9 @@ func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
 
 func _ready() -> void:
 	rescan_button.pressed.connect(_on_rescan_pressed)
+	rebuild_button.pressed.connect(_on_rebuild_pressed)
+	rebuild_confirm_dialog.confirmed.connect(_on_rebuild_confirmed)
+	push_lfs_button.pressed.connect(_on_push_lfs_pressed)
 
 	_poll_timer = Timer.new()
 	_poll_timer.wait_time = POLL_INTERVAL_SEC
@@ -64,6 +90,10 @@ func _exit_tree() -> void:
 		_browse_thread.wait_to_finish()
 	if _poll_thread and _poll_thread.is_started():
 		_poll_thread.wait_to_finish()
+	if _status_thread and _status_thread.is_started():
+		_status_thread.wait_to_finish()
+	if _rebuild_scan_thread and _rebuild_scan_thread.is_started():
+		_rebuild_scan_thread.wait_to_finish()
 
 
 func _request_initial_refresh_when_visible() -> void:
@@ -102,6 +132,7 @@ func _refresh_all() -> void:
 	else:
 		_refresh_changes()
 	_refresh_browse()
+	_refresh_status()
 
 
 func _refresh_changes() -> void:
@@ -136,6 +167,7 @@ func _apply_changes_data(status: Dictionary, patterns: PackedStringArray) -> voi
 	unstaged_combined.append_array(status.get("unstaged", []))
 	unstaged_combined.append_array(status.get("untracked", []))
 	var unstaged := _filter_by_patterns(unstaged_combined, patterns)
+	unstaged = _filter_expected_lfs_divergence(unstaged)
 	_populate_status_list(unstaged_list, unstaged, GitStatusRow.ActionMode.STAGE)
 
 	_last_signature = {"status": status, "patterns": patterns}
@@ -149,6 +181,21 @@ func _filter_by_patterns(entries: Array, patterns: PackedStringArray) -> Array:
 		var pattern := GitAttributesUtil.extension_to_pattern(path.get_extension())
 		if patterns.has(pattern):
 			result.append(e)
+	return result
+
+
+func _filter_expected_lfs_divergence(entries: Array) -> Array:
+	var manifest := LfsManifest.load_manifest(project_root)
+	if manifest.is_empty():
+		return entries
+	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var result: Array = []
+	for entry in entries:
+		var e: Dictionary = entry
+		var path: String = e.get("path", "")
+		if LfsStatusScanner.is_expected_lfs_divergence(project_root, path, patterns, manifest):
+			continue
+		result.append(e)
 	return result
 
 
@@ -248,6 +295,7 @@ func _apply_poll_signature(sig: Dictionary) -> void:
 
 func _on_rescan_pressed() -> void:
 	_refresh_browse()
+	_refresh_status(true)
 
 
 func _on_row_selected(relative_path: String) -> void:
@@ -285,3 +333,332 @@ func _show_error(message: String) -> void:
 	error_dialog.title = "LFS Error"
 	error_dialog.dialog_text = message
 	error_dialog.popup_centered()
+
+
+func _show_info(message: String) -> void:
+	error_dialog.title = "LFS Info"
+	error_dialog.dialog_text = message
+	error_dialog.popup_centered()
+
+
+func _get_remote_url() -> String:
+	if not git_backend:
+		return ""
+	for r in git_backend.list_remotes():
+		var d: Dictionary = r
+		if d.get("name", "") == "origin":
+			return d.get("url", "")
+	return ""
+
+
+# --- Per-pattern status ("not yet tracked" / "tracked but not on remote") ---
+
+
+func _refresh_status(check_remote: bool = false) -> void:
+	if project_root.is_empty():
+		return
+	if _status_in_progress:
+		return
+	_status_in_progress = true
+	if _status_thread and _status_thread.is_started():
+		_status_thread.wait_to_finish()
+	_status_thread = Thread.new()
+	_status_thread.start(_refresh_status_worker.bind(check_remote), Thread.PRIORITY_LOW)
+
+
+func _refresh_status_worker(check_remote: bool) -> void:
+	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var manifest := LfsManifest.load_manifest(project_root)
+	var statuses := LfsStatusScanner.scan(project_root, patterns, manifest)
+	call_deferred("_apply_status_data", patterns, statuses, check_remote)
+
+
+func _apply_status_data(patterns: PackedStringArray, statuses: Array, check_remote: bool) -> void:
+	if _status_thread and _status_thread.is_started():
+		_status_thread.wait_to_finish()
+	_status_in_progress = false
+
+	_last_tracked_patterns = patterns
+	_last_local_statuses = statuses
+	_populate_extension_status_list(patterns, LfsStatusScanner.aggregate_by_pattern(statuses))
+	_populate_quarantined_list(_extract_quarantined_paths(statuses))
+
+	if check_remote:
+		_start_remote_check()
+
+
+func _extract_quarantined_paths(statuses: Array) -> Array:
+	var result: Array = []
+	for entry in statuses:
+		var e: Dictionary = entry
+		if int(e.get("status", -1)) == LfsStatusScanner.Status.QUARANTINED:
+			result.append(e.get("path", ""))
+	return result
+
+
+func _populate_extension_status_list(patterns: PackedStringArray, aggregate: Dictionary) -> void:
+	for child in extension_status_list.get_children():
+		child.queue_free()
+
+	var all_patterns: Dictionary = {}
+	for p in patterns:
+		all_patterns[p] = true
+	for p in aggregate.keys():
+		all_patterns[p] = true
+
+	if all_patterns.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "(no binary file types tracked yet)"
+		extension_status_list.add_child(empty_label)
+		return
+
+	var sorted_patterns := all_patterns.keys()
+	sorted_patterns.sort()
+
+	for pattern in sorted_patterns:
+		var row: LfsExtensionRow = LfsExtensionRowScene.instantiate()
+		extension_status_list.add_child(row)
+		row.load_entry(pattern, patterns.has(pattern))
+		row.set_status_summary(aggregate.get(pattern, {}))
+		row.tracked_toggled.connect(_on_extension_pattern_toggled)
+
+
+func _on_extension_pattern_toggled(pattern: String, tracked: bool) -> void:
+	GitAttributesUtil.set_pattern_tracked(gitattributes_path, pattern, tracked)
+	_refresh_status()
+
+
+func _populate_quarantined_list(quarantined_paths: Array) -> void:
+	for child in quarantined_list.get_children():
+		child.queue_free()
+
+	if quarantined_paths.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "(no quarantined files)"
+		quarantined_list.add_child(empty_label)
+		return
+
+	for path in quarantined_paths:
+		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		quarantined_list.add_child(row)
+		row.load_entry(path, "quarantined", GitStatusRow.ActionMode.STAGE)
+		row.mark_quarantined()
+		row.action_button.text = "Retry"
+		row.stage_requested.connect(_on_quarantine_retry_requested)
+		row.file_selected.connect(_on_row_selected)
+
+
+func _on_quarantine_retry_requested(relative_path: String) -> void:
+	if _active_pull_guard != null:
+		_show_error("A repair is already in progress.")
+		return
+	var remote_url := _get_remote_url()
+	remote_client.setup(LfsCredentialProvider.create_for_remote(remote_url, git_backend))
+	_active_pull_guard = LfsPullGuard.new()
+	_active_pull_guard.repaired.connect(_on_pull_guard_repaired)
+	_active_pull_guard.repair_completed.connect(_on_pull_guard_repair_completed)
+	_active_pull_guard.repair(project_root, remote_url, remote_client, PackedStringArray([relative_path]))
+
+
+func _start_remote_check() -> void:
+	var remote_url := _get_remote_url()
+	if remote_url.is_empty() or _remote_check_in_progress:
+		return
+	remote_client.setup(LfsCredentialProvider.create_for_remote(remote_url, git_backend))
+
+	var objects_by_oid: Dictionary = {}
+	for entry in _last_local_statuses:
+		var e: Dictionary = entry
+		if int(e.get("status", -1)) != LfsStatusScanner.Status.TRACKED_OK:
+			continue
+		var oid: String = e.get("oid", "")
+		if oid.is_empty():
+			continue
+		objects_by_oid[oid] = {"oid": oid, "size": e.get("size", -1)}
+
+	if objects_by_oid.is_empty():
+		return
+
+	_remote_check_in_progress = true
+	remote_client.batch_result_ready.connect(_on_remote_check_result, CONNECT_ONE_SHOT)
+	remote_client.check_objects(remote_url, objects_by_oid.values(), "download")
+
+
+func _on_remote_check_result(_operation: String, response: Dictionary, error: String) -> void:
+	_remote_check_in_progress = false
+	if not error.is_empty():
+		_show_error("Remote LFS check failed: %s" % error)
+		return
+
+	var missing_oids: Dictionary = {}
+	for obj in response.get("objects", []):
+		var o: Dictionary = obj
+		var actions: Dictionary = o.get("actions", {})
+		if o.has("error") or not actions.has("download"):
+			missing_oids[o.get("oid", "")] = true
+
+	var updated: Array = []
+	for entry in _last_local_statuses:
+		var e: Dictionary = (entry as Dictionary).duplicate()
+		if int(e.get("status", -1)) == LfsStatusScanner.Status.TRACKED_OK and missing_oids.has(e.get("oid", "")):
+			e["status"] = LfsStatusScanner.Status.TRACKED_REMOTE_MISSING
+		updated.append(e)
+	_last_local_statuses = updated
+
+	_populate_extension_status_list(_last_tracked_patterns, LfsStatusScanner.aggregate_by_pattern(updated))
+
+
+# --- Rebuild LFS Tracking ---
+
+
+func _ensure_rebuild_service() -> void:
+	if _rebuild_service == null:
+		_rebuild_service = LfsRebuildService.new()
+		_rebuild_service.completed.connect(_on_rebuild_completed)
+	var remote_url := _get_remote_url()
+	remote_client.setup(LfsCredentialProvider.create_for_remote(remote_url, git_backend))
+	_rebuild_service.setup(project_root, git_backend, remote_client, remote_url)
+
+
+func _on_rebuild_pressed() -> void:
+	if _rebuild_scan_in_progress or project_root.is_empty():
+		return
+	_ensure_rebuild_service()
+	_rebuild_scan_in_progress = true
+	rebuild_button.disabled = true
+	if _rebuild_scan_thread and _rebuild_scan_thread.is_started():
+		_rebuild_scan_thread.wait_to_finish()
+	_rebuild_scan_thread = Thread.new()
+	_rebuild_scan_thread.start(_rebuild_scan_worker)
+
+
+func _rebuild_scan_worker() -> void:
+	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var result := _rebuild_service.scan_pending(patterns)
+	call_deferred("_apply_rebuild_scan", result)
+
+
+func _apply_rebuild_scan(result: Dictionary) -> void:
+	if _rebuild_scan_thread and _rebuild_scan_thread.is_started():
+		_rebuild_scan_thread.wait_to_finish()
+	_rebuild_scan_in_progress = false
+	rebuild_button.disabled = false
+
+	var to_in: Array = result.get("to_migrate_in", [])
+	var to_out: Array = result.get("to_migrate_out", [])
+	if to_in.is_empty() and to_out.is_empty():
+		_show_info("Nothing to rebuild -- all tracked patterns already match LFS state.")
+		return
+
+	_pending_rebuild_scan = result
+	rebuild_confirm_dialog.dialog_text = "This will migrate %d file(s) into LFS and %d file(s) out of LFS.\nFiles are staged, not committed. This rewrites local git objects. Continue?" % [to_in.size(), to_out.size()]
+	rebuild_confirm_dialog.popup_centered()
+
+
+func _on_rebuild_confirmed() -> void:
+	var to_in: Array = _pending_rebuild_scan.get("to_migrate_in", [])
+	var to_out: Array = _pending_rebuild_scan.get("to_migrate_out", [])
+	_pending_rebuild_scan = {}
+	rebuild_button.disabled = true
+	lfs_scan_status_label.text = "Rebuilding LFS tracking..."
+	lfs_scan_status_label.visible = true
+	_rebuild_service.start(to_in, to_out)
+
+
+func _on_rebuild_completed(migrated_in: int, migrated_out: int, failed_paths: Array) -> void:
+	rebuild_button.disabled = false
+	lfs_scan_status_label.visible = false
+	var message := "Rebuild complete: %d migrated into LFS, %d migrated out." % [migrated_in, migrated_out]
+	if not failed_paths.is_empty():
+		message += " %d file(s) failed: %s" % [failed_paths.size(), ", ".join(failed_paths)]
+	_show_info(message)
+	_refresh_all()
+
+
+# --- Push LFS Objects ---
+
+
+func _ensure_push_service() -> void:
+	if _push_service == null:
+		_push_service = LfsPushService.new()
+		_push_service.completed.connect(_on_push_completed)
+	var remote_url := _get_remote_url()
+	remote_client.setup(LfsCredentialProvider.create_for_remote(remote_url, git_backend))
+	_push_service.setup(project_root, remote_client, remote_url)
+
+
+func _on_push_lfs_pressed() -> void:
+	var entries: Array = []
+	for entry in _last_local_statuses:
+		var e: Dictionary = entry
+		if int(e.get("status", -1)) == LfsStatusScanner.Status.TRACKED_REMOTE_MISSING:
+			entries.append({"path": e.get("path", ""), "oid": e.get("oid", ""), "size": e.get("size", -1)})
+
+	if entries.is_empty():
+		_show_info("No files need pushing. Run 'Rescan Files' to check the remote first.")
+		return
+
+	_ensure_push_service()
+	push_lfs_button.disabled = true
+	lfs_scan_status_label.text = "Pushing LFS objects..."
+	lfs_scan_status_label.visible = true
+	_push_service.start(entries)
+
+
+func _on_push_completed(pushed: int, failed_paths: Array) -> void:
+	push_lfs_button.disabled = false
+	lfs_scan_status_label.visible = false
+	var message := "Pushed %d LFS object(s)." % pushed
+	if not failed_paths.is_empty():
+		message += " %d failed: %s" % [failed_paths.size(), ", ".join(failed_paths)]
+	_show_info(message)
+	_refresh_status(true)
+
+
+# --- Pull-time quarantine + repair ---
+
+
+func _on_pull_starting() -> void:
+	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	_pre_pull_snapshot = LfsPullGuard.snapshot(project_root, patterns)
+
+
+func _on_pull_finished_relay(ok: bool, _error_message: String, merge_result: int) -> void:
+	if not ok or merge_result != 0:
+		_pre_pull_snapshot = {}
+		return
+
+	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var newly_quarantined := LfsPullGuard.quarantine_changed_pointers(project_root, patterns, _pre_pull_snapshot)
+	_pre_pull_snapshot = {}
+	_refresh_all()
+
+	if newly_quarantined.is_empty():
+		return
+
+	var remote_url := _get_remote_url()
+	remote_client.setup(LfsCredentialProvider.create_for_remote(remote_url, git_backend))
+	_active_pull_guard = LfsPullGuard.new()
+	_active_pull_guard.repaired.connect(_on_pull_guard_repaired)
+	_active_pull_guard.repair_completed.connect(_on_pull_guard_repair_completed)
+	_active_pull_guard.repair(project_root, remote_url, remote_client, newly_quarantined)
+
+
+func _on_pull_guard_repaired(relative_path: String) -> void:
+	var res_path := "res://" + relative_path.trim_prefix("/")
+	EditorInterface.get_resource_filesystem().update_file(res_path)
+
+
+func _on_pull_guard_repair_completed(repaired_paths: Array, failed_paths: Array) -> void:
+	_active_pull_guard = null
+
+	if not repaired_paths.is_empty():
+		var res_paths := PackedStringArray()
+		for p in repaired_paths:
+			res_paths.append("res://" + String(p).trim_prefix("/"))
+		EditorInterface.get_resource_filesystem().reimport_files(res_paths)
+
+	if not failed_paths.is_empty():
+		_show_error("%d file(s) could not be repaired after pull and remain quarantined: %s" % [failed_paths.size(), ", ".join(failed_paths)])
+
+	_refresh_all()
