@@ -3,7 +3,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
-#include "core/variant/callable_method_pointer.h"
+#include "core/object/callable_method_pointer.h"
 
 #include "lfs_object_store.h"
 #include "lfs_pointer.h"

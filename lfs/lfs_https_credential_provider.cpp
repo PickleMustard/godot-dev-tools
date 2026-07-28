@@ -71,7 +71,7 @@ void LfsHttpsCredentialProvider::request_auth(const String &remote_url, const St
 		return;
 	}
 
-	String auth = core_bind::Marshalls::get_singleton()->utf8_to_base64(username_out + ":" + password_out);
+	String auth = CoreBind::Marshalls::get_singleton()->utf8_to_base64(username_out + ":" + password_out);
 	Dictionary headers;
 	headers["Authorization"] = "Basic " + auth;
 

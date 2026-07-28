@@ -2,7 +2,7 @@
 
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
-#include "core/variant/callable_method_pointer.h"
+#include "core/object/callable_method_pointer.h"
 
 #include "git/git_backend.h"
 #include "lfs_manifest.h"

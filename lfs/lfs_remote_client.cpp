@@ -8,7 +8,7 @@
 #include "core/io/stream_peer_tls.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
-#include "core/variant/callable_method_pointer.h"
+#include "core/object/callable_method_pointer.h"
 #include "scene/main/http_request.h"
 
 void LfsRemoteClient::_bind_methods() {
