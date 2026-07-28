@@ -1,10 +1,7 @@
 #include "git_backend.h"
 
-#include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/core/mutex_lock.hpp>
-#include <godot_cpp/variant/callable.hpp>
-#include <godot_cpp/variant/callable_method_pointer.hpp>
-#include <godot_cpp/variant/utility_functions.hpp>
+#include "core/error/error_macros.h"
+#include "core/object/class_db.h"
 
 #include <algorithm>
 #include <cstring>
@@ -13,9 +10,16 @@
 #include <utility>
 #include <vector>
 
-using namespace godot;
-
 namespace {
+
+void gb_warn(const String &msg) {
+	WARN_PRINT(msg);
+}
+
+String last_git_error(const char *fallback = "unknown error") {
+	const git_error *err = git_error_last();
+	return (err && err->message) ? String::utf8(err->message) : String(fallback);
+}
 
 String delta_status_to_string(git_delta_t status) {
 	switch (status) {
@@ -204,14 +208,13 @@ void GitBackend::_bind_methods() {
 }
 
 GitBackend::GitBackend() {
-	repo_mutex.instantiate();
 }
 
 GitBackend::~GitBackend() {
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		bg_thread->wait_to_finish();
+	if (bg_thread.is_started()) {
+		bg_thread.wait_to_finish();
 	}
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	close_repository();
 }
 
@@ -223,36 +226,34 @@ void GitBackend::close_repository() {
 }
 
 bool GitBackend::open_repository(const String &path) {
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		bg_thread->wait_to_finish();
+	if (bg_thread.is_started()) {
+		bg_thread.wait_to_finish();
 	}
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	close_repository();
 
 	CharString utf8_path = path.utf8();
 	int rc = git_repository_open_ext(&repo, utf8_path.get_data(), 0, nullptr);
 	if (rc != 0) {
 		repo = nullptr;
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to open repository at '", path, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to open repository at '") + path + String("': ") + last_git_error());
 		return false;
 	}
 	return true;
 }
 
 bool GitBackend::init_repository(const String &path) {
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		bg_thread->wait_to_finish();
+	if (bg_thread.is_started()) {
+		bg_thread.wait_to_finish();
 	}
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	close_repository();
 
 	CharString utf8_path = path.utf8();
 	git_repository *new_repo = nullptr;
 	int rc = git_repository_init(&new_repo, utf8_path.get_data(), 0);
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to init repository at '", path, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to init repository at '") + path + String("': ") + last_git_error());
 		return false;
 	}
 	git_repository_free(new_repo);
@@ -282,7 +283,7 @@ git_tree *GitBackend::resolve_head_tree() const {
 }
 
 String GitBackend::get_current_branch() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return String("");
 	}
@@ -328,7 +329,7 @@ String GitBackend::get_current_branch() const {
 }
 
 String GitBackend::get_repository_state() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return String("none");
 	}
@@ -356,7 +357,7 @@ String GitBackend::get_repository_state() const {
 }
 
 Dictionary GitBackend::get_rebase_progress() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	Dictionary result;
 	result["in_progress"] = false;
 	if (!repo) {
@@ -379,7 +380,7 @@ Dictionary GitBackend::get_rebase_progress() const {
 }
 
 String GitBackend::get_head_oid_hex() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return String("");
 	}
@@ -391,7 +392,7 @@ String GitBackend::get_head_oid_hex() const {
 }
 
 Dictionary GitBackend::get_status() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	Dictionary result;
 	Array staged;
 	Array unstaged;
@@ -469,7 +470,7 @@ TypedArray<Dictionary> GitBackend::diff_to_array(git_diff *diff) const {
 }
 
 TypedArray<Dictionary> GitBackend::get_diff_head() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return TypedArray<Dictionary>();
 	}
@@ -492,7 +493,7 @@ TypedArray<Dictionary> GitBackend::get_diff_head() const {
 }
 
 TypedArray<Dictionary> GitBackend::get_staged_diff() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return TypedArray<Dictionary>();
 	}
@@ -515,7 +516,7 @@ TypedArray<Dictionary> GitBackend::get_staged_diff() const {
 }
 
 TypedArray<Dictionary> GitBackend::get_unstaged_diff() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return TypedArray<Dictionary>();
 	}
@@ -533,7 +534,7 @@ TypedArray<Dictionary> GitBackend::get_unstaged_diff() const {
 }
 
 TypedArray<Dictionary> GitBackend::get_commit_history(int max_count, bool include_refs) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	TypedArray<Dictionary> result;
 	if (!repo || max_count <= 0) {
 		return result;
@@ -806,7 +807,7 @@ String GitBackend::get_current_branch_raw_name() const {
 }
 
 TypedArray<Dictionary> GitBackend::list_branches() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	TypedArray<Dictionary> result;
 	if (!repo) {
 		return result;
@@ -893,7 +894,7 @@ TypedArray<Dictionary> GitBackend::list_branches() const {
 bool GitBackend::checkout_ref_and_move_head(git_reference *ref, const String &local_branch_name) {
 	git_object *target_obj = nullptr;
 	if (git_reference_peel(&target_obj, ref, GIT_OBJECT_COMMIT) != 0) {
-		UtilityFunctions::push_warning("GitBackend: could not resolve commit for branch '", local_branch_name, "'.");
+		gb_warn(String("GitBackend: could not resolve commit for branch '") + local_branch_name + String("'."));
 		return false;
 	}
 
@@ -904,32 +905,28 @@ bool GitBackend::checkout_ref_and_move_head(git_reference *ref, const String &lo
 	git_object_free(target_obj);
 
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: checkout of '", local_branch_name, "' failed (uncommitted changes conflict?): ",
-				(err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: checkout of '") + local_branch_name + String("' failed (uncommitted changes conflict?): ") + last_git_error());
 		return false;
 	}
 
 	String refname = String("refs/heads/") + local_branch_name;
 	rc = git_repository_set_head(repo, refname.utf8().get_data());
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to move HEAD to '", local_branch_name, "': ",
-				(err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to move HEAD to '") + local_branch_name + String("': ") + last_git_error());
 		return false;
 	}
 	return true;
 }
 
 bool GitBackend::checkout_branch(const String &name) {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
 
 	git_reference *branch_ref = lookup_branch_ref(name);
 	if (!branch_ref) {
-		UtilityFunctions::push_warning("GitBackend: branch '", name, "' not found.");
+		gb_warn(String("GitBackend: branch '") + name + String("' not found."));
 		return false;
 	}
 
@@ -939,14 +936,14 @@ bool GitBackend::checkout_branch(const String &name) {
 }
 
 bool GitBackend::checkout_remote_branch(const String &remote_ref_name) {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
 
 	int slash = remote_ref_name.find("/");
 	if (slash == -1) {
-		UtilityFunctions::push_warning("GitBackend: '", remote_ref_name, "' is not a valid remote-tracking branch name.");
+		gb_warn(String("GitBackend: '") + remote_ref_name + String("' is not a valid remote-tracking branch name."));
 		return false;
 	}
 	String local_name = remote_ref_name.substr(slash + 1);
@@ -954,7 +951,7 @@ bool GitBackend::checkout_remote_branch(const String &remote_ref_name) {
 	String tracking_refname = String("refs/remotes/") + remote_ref_name;
 	git_reference *remote_ref = nullptr;
 	if (git_reference_lookup(&remote_ref, repo, tracking_refname.utf8().get_data()) != 0) {
-		UtilityFunctions::push_warning("GitBackend: remote-tracking branch '", remote_ref_name, "' not found.");
+		gb_warn(String("GitBackend: remote-tracking branch '") + remote_ref_name + String("' not found."));
 		return false;
 	}
 
@@ -970,7 +967,7 @@ bool GitBackend::checkout_remote_branch(const String &remote_ref_name) {
 	git_object *remote_commit_obj = nullptr;
 	if (git_reference_peel(&remote_commit_obj, remote_ref, GIT_OBJECT_COMMIT) != 0) {
 		git_reference_free(remote_ref);
-		UtilityFunctions::push_warning("GitBackend: could not resolve commit for '", remote_ref_name, "'.");
+		gb_warn(String("GitBackend: could not resolve commit for '") + remote_ref_name + String("'."));
 		return false;
 	}
 
@@ -980,10 +977,8 @@ bool GitBackend::checkout_remote_branch(const String &remote_ref_name) {
 	git_object_free(remote_commit_obj);
 
 	if (rc != 0) {
-		const git_error *err = git_error_last();
 		git_reference_free(remote_ref);
-		UtilityFunctions::push_warning("GitBackend: failed to create local branch '", local_name, "' from '", remote_ref_name, "': ",
-				(err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to create local branch '") + local_name + String("' from '") + remote_ref_name + String("': ") + last_git_error());
 		return false;
 	}
 
@@ -996,12 +991,12 @@ bool GitBackend::checkout_remote_branch(const String &remote_ref_name) {
 }
 
 bool GitBackend::create_branch(const String &name, bool checkout_after) {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
 	if (git_repository_head_unborn(repo) == 1) {
-		UtilityFunctions::push_warning("GitBackend: cannot create branch '", name, "': repository has no commits yet.");
+		gb_warn(String("GitBackend: cannot create branch '") + name + String("': repository has no commits yet."));
 		return false;
 	}
 
@@ -1022,9 +1017,7 @@ bool GitBackend::create_branch(const String &name, bool checkout_after) {
 	git_object_free(head_commit_obj);
 
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to create branch '", name, "': ",
-				(err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to create branch '") + name + String("': ") + last_git_error());
 		return false;
 	}
 	git_reference_free(new_ref);
@@ -1036,7 +1029,7 @@ bool GitBackend::create_branch(const String &name, bool checkout_after) {
 }
 
 int GitBackend::merge_branch(const String &source, const String &target) {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return -1;
 	}
@@ -1049,7 +1042,7 @@ int GitBackend::merge_branch(const String &source, const String &target) {
 
 	git_reference *source_ref = lookup_branch_ref(source);
 	if (!source_ref) {
-		UtilityFunctions::push_warning("GitBackend: source branch '", source, "' not found.");
+		gb_warn(String("GitBackend: source branch '") + source + String("' not found."));
 		return -1;
 	}
 
@@ -1078,7 +1071,7 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 	int result = -1;
 
 	if (analysis & GIT_MERGE_ANALYSIS_UP_TO_DATE) {
-		UtilityFunctions::push_warning("GitBackend: '", target, "' already contains all commits from '", source_display_name, "'; nothing to merge.");
+		gb_warn(String("GitBackend: '") + target + String("' already contains all commits from '") + source_display_name + String("'; nothing to merge."));
 		result = 1;
 	} else if (analysis & GIT_MERGE_ANALYSIS_FASTFORWARD) {
 		git_reference *target_ref = lookup_branch_ref(target);
@@ -1103,9 +1096,8 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 			git_reference_free(new_ref);
 			result = 0;
 		} else {
-			const git_error *err = git_error_last();
-			String msg = (err && err->message) ? String::utf8(err->message) : String("unknown error");
-			UtilityFunctions::push_warning("GitBackend: fast-forward merge failed: ", msg);
+			String msg = last_git_error();
+			gb_warn(String("GitBackend: fast-forward merge failed: ") + msg);
 			if (out_error_message) {
 				*out_error_message = String("Fast-forward merge failed: ") + msg;
 			}
@@ -1130,9 +1122,8 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 
 		int rc = git_merge(repo, heads, 1, &merge_opts, &checkout_opts);
 		if (rc != 0) {
-			const git_error *err = git_error_last();
-			String msg = (err && err->message) ? String::utf8(err->message) : String("unknown error");
-			UtilityFunctions::push_warning("GitBackend: merge failed: ", msg);
+			String msg = last_git_error();
+			gb_warn(String("GitBackend: merge failed: ") + msg);
 			if (out_error_message) {
 				*out_error_message = String("Merge failed: ") + msg;
 			}
@@ -1141,8 +1132,8 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 			git_index *index = nullptr;
 			git_repository_index(&index, repo);
 			if (index && git_index_has_conflicts(index)) {
-				UtilityFunctions::push_warning("GitBackend: merge of '", source_display_name, "' into '", target,
-						"' produced conflicts; resolve manually with the git CLI, then retry.");
+				gb_warn(String("GitBackend: merge of '") + source_display_name + String("' into '") + target +
+						String("' produced conflicts; resolve manually with the git CLI, then retry."));
 				if (out_error_message) {
 					*out_error_message = String("Merge of '") + source_display_name + String("' into '") + target +
 							String("' produced conflicts; resolve manually with the git CLI, then retry.");
@@ -1175,9 +1166,8 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 				if (rc == 0) {
 					result = 0;
 				} else {
-					const git_error *err = git_error_last();
-					String err_msg = (err && err->message) ? String::utf8(err->message) : String("unknown error");
-					UtilityFunctions::push_warning("GitBackend: failed to create merge commit: ", err_msg);
+					String err_msg = last_git_error();
+					gb_warn(String("GitBackend: failed to create merge commit: ") + err_msg);
 					if (out_error_message) {
 						*out_error_message = String("Failed to create merge commit: ") + err_msg;
 					}
@@ -1202,7 +1192,7 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 			}
 		}
 	} else {
-		UtilityFunctions::push_warning("GitBackend: cannot merge '", source_display_name, "' into '", target, "' (unsupported merge state).");
+		gb_warn(String("GitBackend: cannot merge '") + source_display_name + String("' into '") + target + String("' (unsupported merge state)."));
 		if (out_error_message) {
 			*out_error_message = String("Cannot merge '") + source_display_name + String("' into '") + target + String("' (unsupported merge state).");
 		}
@@ -1212,13 +1202,13 @@ int GitBackend::merge_annotated_into_current(const String &source_display_name, 
 }
 
 bool GitBackend::commit_staged(const String &message) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
 	String trimmed = message.strip_edges();
 	if (trimmed.is_empty()) {
-		UtilityFunctions::push_warning("GitBackend: commit message is empty.");
+		gb_warn(String("GitBackend: commit message is empty."));
 		return false;
 	}
 
@@ -1227,19 +1217,18 @@ bool GitBackend::commit_staged(const String &message) const {
 	int rc = git_commit_create_from_stage(&new_commit_oid, repo, trimmed.utf8().get_data(), &opts);
 
 	if (rc == GIT_EUNCHANGED) {
-		UtilityFunctions::push_warning("GitBackend: nothing staged to commit.");
+		gb_warn(String("GitBackend: nothing staged to commit."));
 		return false;
 	}
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: commit failed: ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: commit failed: ") + last_git_error());
 		return false;
 	}
 	return true;
 }
 
 bool GitBackend::stage_file(const String &path) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1256,8 +1245,7 @@ bool GitBackend::stage_file(const String &path) const {
 		rc = git_index_remove_bypath(index, utf8_path.get_data());
 	}
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to stage '", path, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to stage '") + path + String("': ") + last_git_error());
 		git_index_free(index);
 		return false;
 	}
@@ -1265,14 +1253,14 @@ bool GitBackend::stage_file(const String &path) const {
 	rc = git_index_write(index);
 	git_index_free(index);
 	if (rc != 0) {
-		UtilityFunctions::push_warning("GitBackend: failed to write index after staging '", path, "'.");
+		gb_warn(String("GitBackend: failed to write index after staging '") + path + String("'."));
 		return false;
 	}
 	return true;
 }
 
 bool GitBackend::unstage_file(const String &path) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1312,15 +1300,14 @@ bool GitBackend::unstage_file(const String &path) const {
 	int rc = git_reset_default(repo, head_obj, &pathspec);
 	git_object_free(head_obj);
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to unstage '", path, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to unstage '") + path + String("': ") + last_git_error());
 		return false;
 	}
 	return true;
 }
 
 TypedArray<Dictionary> GitBackend::list_stashes() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	TypedArray<Dictionary> result;
 	if (!repo) {
 		return result;
@@ -1330,7 +1317,7 @@ TypedArray<Dictionary> GitBackend::list_stashes() const {
 }
 
 bool GitBackend::apply_stash(int index, bool pop) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo || index < 0) {
 		return false;
 	}
@@ -1338,25 +1325,21 @@ bool GitBackend::apply_stash(int index, bool pop) const {
 	git_stash_apply_options opts = GIT_STASH_APPLY_OPTIONS_INIT;
 	int rc = pop ? git_stash_pop(repo, (size_t)index, &opts) : git_stash_apply(repo, (size_t)index, &opts);
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to ", pop ? "pop" : "apply", " stash@{", index, "}: ",
-				(err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to ") + String(pop ? "pop" : "apply") + String(" stash@{") + itos(index) + String("}: ") + last_git_error());
 		return false;
 	}
 	return true;
 }
 
 bool GitBackend::drop_stash(int index) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo || index < 0) {
 		return false;
 	}
 
 	int rc = git_stash_drop(repo, (size_t)index);
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to drop stash@{", index, "}: ",
-				(err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to drop stash@{") + itos(index) + String("}: ") + last_git_error());
 		return false;
 	}
 	return true;
@@ -1397,7 +1380,7 @@ int GitBackend::credentials_cb(git_credential **out, const char *, const char *u
 }
 
 Dictionary GitBackend::get_ahead_behind(const String &remote_name) const {
-	if (!repo_mutex->try_lock()) {
+	if (!repo_mutex.try_lock()) {
 		Dictionary stale = cached_ahead_behind.duplicate();
 		stale["stale"] = true;
 		return stale;
@@ -1410,13 +1393,13 @@ Dictionary GitBackend::get_ahead_behind(const String &remote_name) const {
 	result["stale"] = false;
 
 	if (!repo) {
-		repo_mutex->unlock();
+		repo_mutex.unlock();
 		return result;
 	}
 
 	git_reference *head_ref = nullptr;
 	if (git_repository_head(&head_ref, repo) != 0) {
-		repo_mutex->unlock();
+		repo_mutex.unlock();
 		cached_ahead_behind = result;
 		return result;
 	}
@@ -1424,7 +1407,7 @@ Dictionary GitBackend::get_ahead_behind(const String &remote_name) const {
 	git_reference *upstream_ref = nullptr;
 	if (git_branch_upstream(&upstream_ref, head_ref) != 0) {
 		git_reference_free(head_ref);
-		repo_mutex->unlock();
+		repo_mutex.unlock();
 		cached_ahead_behind = result;
 		return result;
 	}
@@ -1443,29 +1426,40 @@ Dictionary GitBackend::get_ahead_behind(const String &remote_name) const {
 
 	git_reference_free(upstream_ref);
 	git_reference_free(head_ref);
-	repo_mutex->unlock();
+	repo_mutex.unlock();
 	cached_ahead_behind = result;
 	return result;
 }
 
 bool GitBackend::is_remote_op_busy() const {
-	return bg_thread.is_valid() && bg_thread->is_alive();
+	return op_running.is_set();
+}
+
+void GitBackend::thread_trampoline(void *p_userdata) {
+	GitBackend *self = static_cast<GitBackend *>(p_userdata);
+	String remote_name = self->pending_remote_name;
+	if (self->pending_is_pull) {
+		self->pull_worker(remote_name);
+	} else {
+		self->fetch_worker(remote_name);
+	}
+	self->op_running.clear();
 }
 
 bool GitBackend::start_fetch(const String &remote_name) {
 	if (!repo) {
 		return false;
 	}
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		if (bg_thread->is_alive()) {
+	if (bg_thread.is_started()) {
+		if (op_running.is_set()) {
 			return false;
 		}
-		bg_thread->wait_to_finish();
+		bg_thread.wait_to_finish();
 	}
-	if (!bg_thread.is_valid()) {
-		bg_thread.instantiate();
-	}
-	bg_thread->start(callable_mp(this, &GitBackend::fetch_worker).bind(remote_name));
+	pending_remote_name = remote_name;
+	pending_is_pull = false;
+	op_running.set();
+	bg_thread.start(&GitBackend::thread_trampoline, this);
 	return true;
 }
 
@@ -1473,21 +1467,21 @@ bool GitBackend::start_pull(const String &remote_name) {
 	if (!repo) {
 		return false;
 	}
-	if (bg_thread.is_valid() && bg_thread->is_started()) {
-		if (bg_thread->is_alive()) {
+	if (bg_thread.is_started()) {
+		if (op_running.is_set()) {
 			return false;
 		}
-		bg_thread->wait_to_finish();
+		bg_thread.wait_to_finish();
 	}
-	if (!bg_thread.is_valid()) {
-		bg_thread.instantiate();
-	}
-	bg_thread->start(callable_mp(this, &GitBackend::pull_worker).bind(remote_name));
+	pending_remote_name = remote_name;
+	pending_is_pull = true;
+	op_running.set();
+	bg_thread.start(&GitBackend::thread_trampoline, this);
 	return true;
 }
 
 void GitBackend::fetch_worker(String remote_name) {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 
 	bool ok = false;
 	String error_message;
@@ -1507,22 +1501,21 @@ void GitBackend::fetch_worker(String remote_name) {
 			if (rc == 0) {
 				ok = true;
 			} else {
-				const git_error *err = git_error_last();
-				error_message = (err && err->message) ? String::utf8(err->message) : String("fetch failed");
+				error_message = last_git_error("fetch failed");
 			}
 			git_remote_free(remote);
 		}
 	}
 
 	if (!ok) {
-		UtilityFunctions::push_warning("GitBackend: fetch from '", remote_name, "' failed: ", error_message);
+		gb_warn(String("GitBackend: fetch from '") + remote_name + String("' failed: ") + error_message);
 	}
 
 	call_deferred("emit_signal", "fetch_finished", ok, error_message);
 }
 
 void GitBackend::pull_worker(String remote_name) {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 
 	bool ok = false;
 	String error_message;
@@ -1548,8 +1541,7 @@ void GitBackend::pull_worker(String remote_name) {
 				git_remote_free(remote);
 
 				if (rc != 0) {
-					const git_error *err = git_error_last();
-					error_message = (err && err->message) ? String::utf8(err->message) : String("fetch failed");
+					error_message = last_git_error("fetch failed");
 				} else {
 					String tracking_ref_name = String("refs/remotes/") + remote_name + String("/") + branch;
 					git_reference *tracking_ref = nullptr;
@@ -1572,14 +1564,14 @@ void GitBackend::pull_worker(String remote_name) {
 	}
 
 	if (!ok) {
-		UtilityFunctions::push_warning("GitBackend: pull from '", remote_name, "' failed: ", error_message);
+		gb_warn(String("GitBackend: pull from '") + remote_name + String("' failed: ") + error_message);
 	}
 
 	call_deferred("emit_signal", "pull_finished", ok, error_message, merge_result);
 }
 
 String GitBackend::get_config_string(const String &key, const String &default_value) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return default_value;
 	}
@@ -1597,7 +1589,7 @@ String GitBackend::get_config_string(const String &key, const String &default_va
 }
 
 bool GitBackend::set_config_string(const String &key, const String &value) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1608,15 +1600,14 @@ bool GitBackend::set_config_string(const String &key, const String &value) const
 	int rc = git_config_set_string(cfg, key.utf8().get_data(), value.utf8().get_data());
 	git_config_free(cfg);
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to set config '", key, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to set config '") + key + String("': ") + last_git_error());
 		return false;
 	}
 	return true;
 }
 
 TypedArray<Dictionary> GitBackend::list_remotes() const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	TypedArray<Dictionary> result;
 	if (!repo) {
 		return result;
@@ -1648,7 +1639,7 @@ TypedArray<Dictionary> GitBackend::list_remotes() const {
 }
 
 bool GitBackend::set_remote_url(const String &name, const String &url) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
@@ -1661,8 +1652,7 @@ bool GitBackend::set_remote_url(const String &name, const String &url) const {
 		git_remote_free(existing);
 		int rc = git_remote_set_url(repo, utf8_name.get_data(), utf8_url.get_data());
 		if (rc != 0) {
-			const git_error *err = git_error_last();
-			UtilityFunctions::push_warning("GitBackend: failed to set URL for remote '", name, "': ", (err && err->message) ? err->message : "unknown error");
+			gb_warn(String("GitBackend: failed to set URL for remote '") + name + String("': ") + last_git_error());
 			return false;
 		}
 		return true;
@@ -1671,8 +1661,7 @@ bool GitBackend::set_remote_url(const String &name, const String &url) const {
 	git_remote *created = nullptr;
 	int rc = git_remote_create(&created, repo, utf8_name.get_data(), utf8_url.get_data());
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to create remote '", name, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to create remote '") + name + String("': ") + last_git_error());
 		return false;
 	}
 	git_remote_free(created);
@@ -1680,15 +1669,14 @@ bool GitBackend::set_remote_url(const String &name, const String &url) const {
 }
 
 bool GitBackend::remove_remote(const String &name) const {
-	MutexLock lock(**repo_mutex);
+	MutexLock lock(repo_mutex);
 	if (!repo) {
 		return false;
 	}
 
 	int rc = git_remote_delete(repo, name.utf8().get_data());
 	if (rc != 0) {
-		const git_error *err = git_error_last();
-		UtilityFunctions::push_warning("GitBackend: failed to remove remote '", name, "': ", (err && err->message) ? err->message : "unknown error");
+		gb_warn(String("GitBackend: failed to remove remote '") + name + String("': ") + last_git_error());
 		return false;
 	}
 	return true;

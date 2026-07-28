@@ -1,17 +1,16 @@
 #ifndef GIT_BACKEND_H
 #define GIT_BACKEND_H
 
-#include <godot_cpp/classes/mutex.hpp>
-#include <godot_cpp/classes/ref_counted.hpp>
-#include <godot_cpp/classes/thread.hpp>
-#include <godot_cpp/variant/array.hpp>
-#include <godot_cpp/variant/dictionary.hpp>
-#include <godot_cpp/variant/string.hpp>
-#include <godot_cpp/variant/typed_array.hpp>
+#include "core/object/ref_counted.h"
+#include "core/os/mutex.h"
+#include "core/os/thread.h"
+#include "core/templates/safe_refcount.h"
+#include "core/variant/array.h"
+#include "core/variant/dictionary.h"
+#include "core/variant/typed_array.h"
+#include "core/string/ustring.h"
 
 #include <git2.h>
-
-namespace godot {
 
 class GitBackend : public RefCounted {
 	GDCLASS(GitBackend, RefCounted);
@@ -21,8 +20,11 @@ protected:
 
 private:
 	git_repository *repo = nullptr;
-	mutable Ref<Mutex> repo_mutex;
-	Ref<Thread> bg_thread;
+	mutable Mutex repo_mutex;
+	Thread bg_thread;
+	SafeFlag op_running;
+	String pending_remote_name;
+	bool pending_is_pull = false;
 	mutable Dictionary cached_ahead_behind;
 	String ssh_key_passphrase;
 
@@ -40,6 +42,7 @@ private:
 
 	void fetch_worker(String remote_name);
 	void pull_worker(String remote_name);
+	static void thread_trampoline(void *p_userdata);
 
 public:
 	GitBackend();
@@ -86,7 +89,5 @@ public:
 
 	void set_ssh_passphrase(const String &passphrase);
 };
-
-} // namespace godot
 
 #endif // GIT_BACKEND_H

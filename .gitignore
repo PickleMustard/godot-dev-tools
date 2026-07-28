@@ -11,9 +11,9 @@ export_presets.cfg
 .mono/
 data_*/
 
-# native/ GDExtension build intermediates (compiled addons/dev_tools/bin/*.so IS committed)
-native/.sconsign.dblite
-native/**/*.o
-native/**/*.os
-native/compile_commands.json
-native/godot-cpp/bin/
+# core-module build intermediates (this repo is meant to be nested as
+# modules/dev_tools_git inside a Godot engine source checkout)
+.sconsign.dblite
+**/*.o
+**/*.os
+compile_commands.json

@@ -4,6 +4,8 @@ extends Control
 signal status_ready(status: Dictionary)
 signal refresh_data_ready(data: Dictionary)
 signal poll_signature_ready(sig: Dictionary)
+signal pull_starting()
+signal pull_finished_relay(ok: bool, error_message: String, merge_result: int)
 
 const MAX_HISTORY: int = 300
 const HISTORY_PREVIEW_COUNT: int = 5
@@ -15,6 +17,7 @@ const GitStatusRowScene = preload("res://addons/dev_tools/menus/git_status_row.t
 var git_backend: GitBackend
 var project_root: String = ""
 var repo_open: bool = false
+var gitattributes_path: String = ""
 var _poll_timer: Timer
 var _remote_poll_timer: Timer
 var _last_signature: Dictionary = {}
@@ -64,6 +67,7 @@ func setup(backend: GitBackend, is_open: bool, root_path: String) -> void:
 	git_backend = backend
 	repo_open = is_open
 	project_root = root_path
+	gitattributes_path = root_path.path_join(".gitattributes")
 	if is_inside_tree():
 		_request_initial_refresh_when_visible()
 
@@ -235,6 +239,7 @@ func _apply_refresh_data(data: Dictionary) -> void:
 	var unstaged_combined: Array = []
 	unstaged_combined.append_array(status.get("unstaged", []))
 	unstaged_combined.append_array(status.get("untracked", []))
+	unstaged_combined = _filter_expected_lfs_divergence(unstaged_combined)
 	_populate_file_list(unstaged_list, unstaged_combined, GitStatusRow.ActionMode.STAGE)
 
 	var history: Array = data["history"]
@@ -313,6 +318,26 @@ func _compute_poll_signature() -> Dictionary:
 		"stash_count": stashes.size(),
 		"stash_top_oid": (stashes[0] as Dictionary).get("oid", "") if stashes.size() > 0 else "",
 	}
+
+
+func _filter_expected_lfs_divergence(entries: Array) -> Array:
+	if gitattributes_path.is_empty():
+		return entries
+	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	if patterns.is_empty():
+		return entries
+	var manifest := LfsManifest.load_manifest(project_root)
+	if manifest.is_empty():
+		return entries
+
+	var result: Array = []
+	for entry in entries:
+		var e: Dictionary = entry
+		var path: String = e.get("path", "")
+		if LfsStatusScanner.is_expected_lfs_divergence(project_root, path, patterns, manifest):
+			continue
+		result.append(e)
+	return result
 
 
 func _populate_file_list(list: VBoxContainer, entries: Array, mode: int) -> void:
@@ -572,6 +597,7 @@ func _start_fetch() -> void:
 func _start_pull() -> void:
 	if not git_backend or _remote_op_busy:
 		return
+	pull_starting.emit()
 	if git_backend.start_pull("origin"):
 		_set_remote_busy(true)
 	else:
@@ -601,6 +627,7 @@ func _on_pull_finished(ok: bool, error_message: String, merge_result: int) -> vo
 	else:
 		_show_error("Pull failed: %s" % error_message)
 	_refresh_pull_indicator()
+	pull_finished_relay.emit(ok, error_message, merge_result)
 
 
 func _refresh_pull_indicator() -> void:

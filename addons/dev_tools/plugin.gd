@@ -48,6 +48,8 @@ func _init_lfs_tab() -> void:
 	main_panel.add_tool_tab("LFS", lfs_visualizer)
 	if git_visualizer:
 		git_visualizer.status_ready.connect(lfs_visualizer._on_git_status_ready)
+		git_visualizer.pull_starting.connect(lfs_visualizer._on_pull_starting)
+		git_visualizer.pull_finished_relay.connect(lfs_visualizer._on_pull_finished_relay)
 
 
 func _exit_tree() -> void:
