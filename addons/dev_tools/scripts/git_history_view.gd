@@ -70,8 +70,12 @@ func _draw() -> void:
 		draw_circle(Vector2(x, y), DOT_RADIUS, color)
 
 		var refs: Array = c.get("refs", [])
+		var ref_names: Array = []
+		for r in refs:
+			var rd: Dictionary = r
+			ref_names.append(rd.get("name", ""))
 		var ref_text := ""
-		if not refs.is_empty():
-			ref_text = " (%s)" % ", ".join(refs)
+		if not ref_names.is_empty():
+			ref_text = " (%s)" % ", ".join(ref_names)
 		var label_text := "%s %s%s" % [c.get("short_hash", ""), c.get("summary", ""), ref_text]
 		draw_string(font, Vector2(text_x, y + font_size * 0.35), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)

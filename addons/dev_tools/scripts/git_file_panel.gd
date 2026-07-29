@@ -1,5 +1,5 @@
 @tool
-class_name GitFilePanel
+class_name DevToolsGitFilePanel
 extends VBoxContainer
 
 enum ActionMode { NONE, STAGE, UNSTAGE }
@@ -36,8 +36,8 @@ func load_file(file: Dictionary, mode: int) -> void:
 
 	path_label.text = file_path
 	status_label.text = "(%s)" % status
-	status_chip.color = GitDiffFormat.status_color(status)
-	body_label.text = GitDiffFormat.format_hunks(file_hunks)
+	status_chip.color = DevToolsGitDiffFormat.status_color(status)
+	body_label.text = DevToolsGitDiffFormat.format_hunks(file_hunks)
 
 	action_mode = mode
 	action_button.visible = mode != ActionMode.NONE

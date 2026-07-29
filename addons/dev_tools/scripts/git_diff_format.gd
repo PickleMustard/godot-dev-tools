@@ -1,5 +1,5 @@
 @tool
-class_name GitDiffFormat
+class_name DevToolsGitDiffFormat
 extends RefCounted
 
 const COLOR_ADDED := Color(0.55, 0.84, 0.44)

@@ -1,5 +1,5 @@
 @tool
-class_name GitFileList
+class_name DevToolsGitFileList
 extends VBoxContainer
 
 signal file_selected(path: String)
@@ -29,7 +29,7 @@ func load_files(files: Array, action_mode: int) -> void:
 			path = f.get("old_path", "")
 		_files_by_path[path] = f
 
-		var panel: GitFilePanel = GitFilePanelScene.instantiate()
+		var panel: DevToolsGitFilePanel = GitFilePanelScene.instantiate()
 		add_child(panel)
 		panel.load_file(f, action_mode)
 		panel.file_selected.connect(func(p: String) -> void: file_selected.emit(p))

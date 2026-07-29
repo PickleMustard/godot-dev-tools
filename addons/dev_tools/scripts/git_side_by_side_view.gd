@@ -19,7 +19,7 @@ func load_file(path: String, hunks: Array) -> void:
 	for child in rows_container.get_children():
 		child.queue_free()
 
-	for row in GitDiffFormat.build_side_by_side_rows(hunks):
+	for row in DevToolsGitDiffFormat.build_side_by_side_rows(hunks):
 		rows_container.add_child(_build_row(row))
 
 
@@ -38,10 +38,10 @@ func _build_row(row: Dictionary) -> Control:
 	match kind:
 		"removed":
 			old_label.text = "[color=red]-%s[/color]" % _escape(old_text)
-			gutter.color = GitDiffFormat.COLOR_DELETED
+			gutter.color = DevToolsGitDiffFormat.COLOR_DELETED
 		"added":
 			new_label.text = "[color=green]+%s[/color]" % _escape(new_text)
-			gutter.color = GitDiffFormat.COLOR_ADDED
+			gutter.color = DevToolsGitDiffFormat.COLOR_ADDED
 		"hunk_header":
 			old_label.text = "[color=cyan]%s[/color]" % _escape(old_text)
 			new_label.visible = false
