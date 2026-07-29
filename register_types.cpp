@@ -7,6 +7,8 @@
 
 #include <git2.h>
 
+#include "lfs/dir_access_lock_guard.h"
+#include "lfs/file_access_lock_guard.h"
 #include "lfs/lfs_credential_provider.h"
 #include "lfs/lfs_https_credential_provider.h"
 #include "lfs/lfs_lock_manager.h"
@@ -53,12 +55,26 @@ void initialize_dev_tools_git_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(LfsPushService);
 	GDREGISTER_CLASS(LfsRebuildService);
 
-	// Lock-state singleton -- queried by both the GDScript UI and the
-	// engine-internals open/save veto (see editor_node.cpp, filesystem_dock.cpp,
-	// script_editor_plugin.cpp) via Engine::get_singleton_object(), so it must
-	// be reachable without those call sites depending on this module's headers.
+	// Lock-state singleton -- queried by the GDScript UI via
+	// Engine.get_singleton("LfsLockManager"), and held directly by
+	// FileAccessLockGuard/DirAccessLockGuard below since they compile
+	// against this module's headers.
 	dev_tools_lfs_lock_manager = memnew(LfsLockManager);
 	Engine::get_singleton()->add_singleton(Engine::Singleton("LfsLockManager", LfsLockManager::get_singleton()));
+
+	// Editor-only write/rename/delete veto for LFS-locked files. Overrides
+	// the platform default FileAccess/DirAccess creators for ACCESS_RESOURCES
+	// (res://) and ACCESS_FILESYSTEM (already-globalized absolute paths under
+	// the project) -- a single chokepoint instead of patching every editor
+	// call site that can open/rename/delete a file. Safe to install here:
+	// OS::initialize() (which sets the platform's own FileAccess/DirAccess
+	// make_default<...>()) runs at main.cpp's OS setup, strictly before
+	// MODULE_INITIALIZATION_LEVEL_EDITOR, so nothing overwrites this after
+	// the fact.
+	FileAccess::make_default<FileAccessLockGuard>(FileAccess::ACCESS_RESOURCES);
+	FileAccess::make_default<FileAccessLockGuard>(FileAccess::ACCESS_FILESYSTEM);
+	DirAccess::make_default<DirAccessLockGuard>(DirAccess::ACCESS_RESOURCES);
+	DirAccess::make_default<DirAccessLockGuard>(DirAccess::ACCESS_FILESYSTEM);
 }
 
 void uninitialize_dev_tools_git_module(ModuleInitializationLevel p_level) {

@@ -87,6 +87,10 @@ func _ready() -> void:
 	add_child(_lock_poll_timer)
 	_lock_poll_timer.timeout.connect(_on_lock_poll_timeout)
 
+	var lock_mgr := _lock_manager()
+	if lock_mgr and not lock_mgr.write_blocked.is_connected(_on_write_blocked):
+		lock_mgr.write_blocked.connect(_on_write_blocked)
+
 	if git_backend:
 		_request_initial_refresh_when_visible()
 
@@ -680,6 +684,12 @@ func _on_push_completed(pushed: int, failed_paths: Array) -> void:
 
 func _lock_manager() -> Object:
 	return Engine.get_singleton("LfsLockManager")
+
+
+# Fired by FileAccessLockGuard/DirAccessLockGuard (engine-side, this module's
+# C++) when a write/rename/delete of a locked-by-other file was refused.
+func _on_write_blocked(relative_path: String, owner_name: String) -> void:
+	_show_error("'%s' is locked by %s and cannot be saved." % [relative_path, owner_name])
 
 
 func _get_lock_poll_interval() -> float:

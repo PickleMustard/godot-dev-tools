@@ -2,6 +2,7 @@
 #define LFS_LOCK_MANAGER_H
 
 #include "core/object/object.h"
+#include "core/os/mutex.h"
 #include "core/string/ustring.h"
 #include "core/templates/hash_map.h"
 #include "core/variant/array.h"
@@ -11,19 +12,21 @@
 // (that's LfsRemoteClient's job) -- purely a cache of "what does this
 // session currently believe about locks" plus the small amount of policy
 // (max-lock count, session-created-lock registry) both the GDScript UI and
-// the engine-internals open/save veto need to query.
+// the in-module FileAccessLockGuard/DirAccessLockGuard veto need to query.
 //
-// Registered as an Engine singleton ("LfsLockManager") so editor/ code can
-// reach it via Engine::get_singleton_object() + Object::call() without a
-// compile-time dependency on this module (see register_types.cpp and the
-// veto call sites in editor/editor_node.cpp, editor/docks/filesystem_dock.cpp,
-// editor/script/script_editor_plugin.cpp).
+// Registered as an Engine singleton ("LfsLockManager") for convenient
+// GDScript access (Engine.get_singleton("LfsLockManager")); the C++ veto
+// guards in this module (see file_access_lock_guard.h, dir_access_lock_guard.h)
+// hold a direct pointer via get_singleton() instead, since they compile
+// against this header directly.
 //
-// Threading: every mutator/query here is expected to run on the main
-// thread only -- GDScript calls it from call_deferred callbacks, and the
-// engine veto call sites are all main-thread-only editor operations
-// (open/save). No mutex is used; do not add one without first checking
-// that assumption still holds.
+// Threading: FileAccess::open()/DirAccess::rename()/remove() -- the guards'
+// chokepoints -- can be invoked from resource-loader worker threads, not
+// just the main thread. All state access is therefore guarded by
+// _state_mutex. Signal emission (locks_changed, write_blocked) must never
+// happen while holding the lock (a connected handler could re-enter this
+// object and deadlock), and must be marshaled to the main thread if
+// triggered from elsewhere (see notify_write_blocked()).
 class LfsLockManager : public Object {
 	GDCLASS(LfsLockManager, Object);
 
@@ -32,6 +35,10 @@ protected:
 
 private:
 	static LfsLockManager *singleton;
+
+	// Guards every field below. Take it in every public method; never emit
+	// a signal while holding it (release first, then emit_signal).
+	mutable Mutex _state_mutex;
 
 	// Keyed by normalized relative path (no "res://" prefix, no leading "/").
 	HashMap<String, Dictionary> _locks_by_path;
@@ -49,6 +56,16 @@ private:
 	Array _pending_actions;
 
 	static String _normalize_path(const String &path);
+
+	// Unlocked variants for internal reuse -- callers must already hold
+	// _state_mutex. Public methods must never call each other directly
+	// (that would double-lock a non-recursive Mutex); they call these instead.
+	bool _is_locked_unlocked(const String &normalized_path) const;
+	bool _is_locked_by_me_unlocked(const String &normalized_path) const;
+	Array _get_my_locked_paths_unlocked() const;
+	void _clear_pending_action_unlocked(const String &normalized_path);
+
+	void _notify_write_blocked_main(const String &relative_path, const String &owner_name);
 
 public:
 	static LfsLockManager *get_singleton();
@@ -78,6 +95,11 @@ public:
 	void enqueue_pending_unlock(const String &lock_id, const String &relative_path);
 	Array get_pending_actions() const;
 	void clear_pending_action(const String &relative_path);
+
+	// Called by FileAccessLockGuard/DirAccessLockGuard when a write/rename/
+	// remove is vetoed. Safe to call from any thread -- marshals to the main
+	// thread before emitting the write_blocked signal if necessary.
+	void notify_write_blocked(const String &relative_path, const String &owner_name);
 
 	LfsLockManager();
 	~LfsLockManager();
