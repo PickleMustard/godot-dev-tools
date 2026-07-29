@@ -40,6 +40,14 @@ private:
 	String _pending_download_oid;
 	String _pending_download_dest;
 
+	// Locking API traffic gets its own HTTPRequest node, separate from
+	// _batch_request -- the ~1min lock-poll timer runs alongside
+	// user-triggered Push/Rebuild/Rescan (which reuse _batch_request), and
+	// sharing one node risks a response being misattributed to the wrong
+	// in-flight call.
+	HTTPRequest *_lock_request = nullptr;
+	String _pending_lock_operation;
+
 	// Keyed by oid rather than kept as a flat list (the original GDScript
 	// used a flat Array of Threads) -- simpler to look up and join from the
 	// call_deferred completion callback, which can only carry Variant-safe
@@ -52,6 +60,10 @@ private:
 	void _on_download_request_completed(int result, int response_code, const PackedStringArray &headers, const PackedByteArray &body);
 	void _on_check_objects_auth_complete(bool ok, Dictionary headers, String error, String batch_url_override, String operation, Array objects, String default_url);
 	void _finish_upload(const String &oid, const Dictionary &result);
+
+	void _on_lock_request_completed(int result, int response_code, const PackedStringArray &headers, const PackedByteArray &body);
+	void _on_lock_auth_complete(bool ok, Dictionary headers, String error, String url_override, String operation_label, String default_url, String query_suffix, String method, String body);
+	void _send_lock_request(const String &operation_label, const String &url, const String &method, const String &body, const Dictionary &auth_headers);
 
 	static void _upload_thread_trampoline(void *p_userdata);
 	static Dictionary _upload_via_http_client(const String &href, const Dictionary &header, const PackedByteArray &bytes);
@@ -66,6 +78,13 @@ public:
 	void check_objects(const String &remote_url, const Array &objects, const String &operation = "download");
 	void download_object(const String &oid, const String &href, const Dictionary &header, const String &dest_path);
 	void upload_object(const String &oid, const String &href, const Dictionary &header, const String &bytes_path);
+
+	// LFS Locking API (POST/GET /info/lfs/locks, POST /info/lfs/locks/:id/unlock).
+	// Pure HTTP, same no-git-lfs-binary design as the Batch API methods above.
+	String base_locks_url(const String &remote_url) const;
+	void list_locks(const String &remote_url, const String &path_filter = "", const String &cursor = "");
+	void create_lock(const String &remote_url, const String &path);
+	void delete_lock(const String &remote_url, const String &lock_id, bool force = false);
 
 	LfsRemoteClient();
 	~LfsRemoteClient();

@@ -217,6 +217,8 @@ func _gather_settings_data() -> Dictionary:
 		"pull_rebase": git_backend.get_config_string("pull.rebase"),
 		"push_default": git_backend.get_config_string("push.default"),
 		"init_default_branch": git_backend.get_config_string("init.defaultBranch"),
+		"lfs_max_locks": git_backend.get_config_string("devtools.lfs.maxlocks"),
+		"lfs_lock_poll_interval_sec": git_backend.get_config_string("devtools.lfs.lockpollintervalsec"),
 	}
 
 

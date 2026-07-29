@@ -10,7 +10,7 @@
 
 void LfsCredentialProvider::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("supports", "remote_url"), &LfsCredentialProvider::supports);
-	ClassDB::bind_method(D_METHOD("request_auth", "remote_url", "operation", "on_complete"), &LfsCredentialProvider::request_auth);
+	ClassDB::bind_method(D_METHOD("request_auth", "remote_url", "operation", "on_complete", "endpoint"), &LfsCredentialProvider::request_auth, DEFVAL(String("objects/batch")));
 	ClassDB::bind_static_method("LfsCredentialProvider", D_METHOD("create_for_remote", "remote_url", "git_backend"), &LfsCredentialProvider::create_for_remote, DEFVAL(Ref<GitBackend>()));
 }
 
@@ -18,7 +18,7 @@ bool LfsCredentialProvider::supports(const String &remote_url) {
 	return true;
 }
 
-void LfsCredentialProvider::request_auth(const String &remote_url, const String &operation, const Callable &on_complete) {
+void LfsCredentialProvider::request_auth(const String &remote_url, const String &operation, const Callable &on_complete, const String &endpoint) {
 	call_auth_result(on_complete, true, Dictionary(), String());
 }
 

@@ -1051,6 +1051,62 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Save"
 
+[node name="LfsLockingSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("4")
+
+[node name="LfsLockingBox" type="VBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection"]
+layout_mode = 2
+
+[node name="LfsLockingHeaderBar" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("5")
+
+[node name="LfsLockingHeader" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/LfsLockingHeaderBar"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("9")
+text = "LFS Locking"
+
+[node name="MaxLocksRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox"]
+layout_mode = 2
+
+[node name="MaxLocksLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/MaxLocksRow"]
+layout_mode = 2
+text = "devtools.lfs.maxlocks"
+
+[node name="MaxLocksSpinBox" type="SpinBox" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/MaxLocksRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 999.0
+value = 10.0
+
+[node name="MaxLocksSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/MaxLocksRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
+[node name="LockPollIntervalRow" type="HBoxContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox"]
+layout_mode = 2
+
+[node name="LockPollIntervalLabel" type="Label" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/LockPollIntervalRow"]
+layout_mode = 2
+text = "devtools.lfs.lockpollintervalsec"
+
+[node name="LockPollIntervalSpinBox" type="SpinBox" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/LockPollIntervalRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 5.0
+max_value = 3600.0
+value = 60.0
+
+[node name="LockPollIntervalSaveButton" type="Button" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox/LfsLockingSection/LfsLockingBox/LockPollIntervalRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save"
+
 [node name="CustomConfigSection" type="PanelContainer" parent="OuterFrame/MainTabs/Settings/SettingsScroll/SettingsRoot/AdvancedFold/AdvancedBox"]
 layout_mode = 2
 theme_override_styles/panel = SubResource("4")

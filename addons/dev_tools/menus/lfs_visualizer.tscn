@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://addons/dev_tools/scripts/lfs_visualizer.gd" id="1"]
 
@@ -117,6 +117,33 @@ border_color = Color(0.118, 0.125, 0.154, 1)
 [sub_resource type="FontVariation" id="9"]
 variation_embolden = 0.6
 
+[sub_resource type="StyleBoxFlat" id="10"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.156, 0.166, 0.205, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.255, 0.265, 0.304, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="11"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
+bg_color = Color(0.144, 0.153, 0.189, 1)
+border_width_bottom = 1
+border_color = Color(0.122, 0.13, 0.16, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
 [node name="LfsVisualizer" type="Control"]
 anchors_preset = 15
 anchor_right = 1.0
@@ -150,6 +177,31 @@ horizontal_scroll_mode = 0
 [node name="Sections" type="VBoxContainer" parent="OuterFrame/Root/MainScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="ActiveEditsSection" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("10")
+
+[node name="ActiveEditsBox" type="VBoxContainer" parent="OuterFrame/Root/MainScroll/Sections/ActiveEditsSection"]
+layout_mode = 2
+
+[node name="ActiveEditsHeaderBar" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections/ActiveEditsSection/ActiveEditsBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("11")
+
+[node name="ActiveEditsHeader" type="Label" parent="OuterFrame/Root/MainScroll/Sections/ActiveEditsSection/ActiveEditsBox/ActiveEditsHeaderBar"]
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = SubResource("9")
+text = "LFS Active Edits"
+
+[node name="LfsActiveEditsList" type="VBoxContainer" parent="OuterFrame/Root/MainScroll/Sections/ActiveEditsSection/ActiveEditsBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
 
 [node name="StagedSection" type="PanelContainer" parent="OuterFrame/Root/MainScroll/Sections"]
 layout_mode = 2

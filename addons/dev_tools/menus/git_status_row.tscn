@@ -27,3 +27,9 @@ text = "[modified] path"
 unique_name_in_owner = true
 layout_mode = 2
 text = "+"
+
+[node name="LockButton" type="Button" parent="Row"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "Lock"

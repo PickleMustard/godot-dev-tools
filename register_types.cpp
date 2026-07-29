@@ -2,12 +2,14 @@
 
 #include "git/git_backend.h"
 
+#include "core/config/engine.h"
 #include "core/object/class_db.h"
 
 #include <git2.h>
 
 #include "lfs/lfs_credential_provider.h"
 #include "lfs/lfs_https_credential_provider.h"
+#include "lfs/lfs_lock_manager.h"
 #include "lfs/lfs_manifest.h"
 #include "lfs/lfs_object_store.h"
 #include "lfs/lfs_pointer.h"
@@ -19,6 +21,8 @@
 #include "lfs/lfs_scanner.h"
 #include "lfs/lfs_ssh_credential_provider.h"
 #include "lfs/lfs_status_scanner.h"
+
+static LfsLockManager *dev_tools_lfs_lock_manager = nullptr;
 
 void initialize_dev_tools_git_module(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_EDITOR) {
@@ -36,6 +40,7 @@ void initialize_dev_tools_git_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(LfsScanner);
 	GDREGISTER_CLASS(LfsQuarantine);
 	GDREGISTER_CLASS(LfsStatusScanner);
+	GDREGISTER_CLASS(LfsLockManager);
 
 	// Credential providers -- base before subclasses.
 	GDREGISTER_CLASS(LfsCredentialProvider);
@@ -47,11 +52,24 @@ void initialize_dev_tools_git_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(LfsPullGuard);
 	GDREGISTER_CLASS(LfsPushService);
 	GDREGISTER_CLASS(LfsRebuildService);
+
+	// Lock-state singleton -- queried by both the GDScript UI and the
+	// engine-internals open/save veto (see editor_node.cpp, filesystem_dock.cpp,
+	// script_editor_plugin.cpp) via Engine::get_singleton_object(), so it must
+	// be reachable without those call sites depending on this module's headers.
+	dev_tools_lfs_lock_manager = memnew(LfsLockManager);
+	Engine::get_singleton()->add_singleton(Engine::Singleton("LfsLockManager", LfsLockManager::get_singleton()));
 }
 
 void uninitialize_dev_tools_git_module(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_EDITOR) {
 		return;
+	}
+
+	if (dev_tools_lfs_lock_manager != nullptr) {
+		Engine::get_singleton()->remove_singleton("LfsLockManager");
+		memdelete(dev_tools_lfs_lock_manager);
+		dev_tools_lfs_lock_manager = nullptr;
 	}
 
 	git_libgit2_shutdown();

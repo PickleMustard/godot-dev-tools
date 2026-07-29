@@ -26,7 +26,7 @@ public:
 			_git_backend(git_backend) {}
 
 	virtual bool supports(const String &remote_url) override;
-	virtual void request_auth(const String &remote_url, const String &operation, const Callable &on_complete) override;
+	virtual void request_auth(const String &remote_url, const String &operation, const Callable &on_complete, const String &endpoint = "objects/batch") override;
 
 	static Dictionary _parse_ssh_url(const String &remote_url);
 };

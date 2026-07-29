@@ -14,7 +14,7 @@ bool LfsHttpsCredentialProvider::supports(const String &remote_url) {
 	return remote_url.begins_with("https://") || remote_url.begins_with("http://");
 }
 
-void LfsHttpsCredentialProvider::request_auth(const String &remote_url, const String &operation, const Callable &on_complete) {
+void LfsHttpsCredentialProvider::request_auth(const String &remote_url, const String &operation, const Callable &on_complete, const String &endpoint) {
 	Dictionary info = _parse_https_url(remote_url);
 	if (info.is_empty()) {
 		call_auth_result(on_complete, false, Dictionary(), "Could not parse HTTPS remote URL.");

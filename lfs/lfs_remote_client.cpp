@@ -22,6 +22,16 @@ void LfsRemoteClient::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("download_object", "oid", "href", "header", "dest_path"), &LfsRemoteClient::download_object);
 	ClassDB::bind_method(D_METHOD("upload_object", "oid", "href", "header", "bytes_path"), &LfsRemoteClient::upload_object);
 
+	ClassDB::bind_method(D_METHOD("base_locks_url", "remote_url"), &LfsRemoteClient::base_locks_url);
+	ClassDB::bind_method(D_METHOD("list_locks", "remote_url", "path_filter", "cursor"), &LfsRemoteClient::list_locks, DEFVAL(String()), DEFVAL(String()));
+	ClassDB::bind_method(D_METHOD("create_lock", "remote_url", "path"), &LfsRemoteClient::create_lock);
+	ClassDB::bind_method(D_METHOD("delete_lock", "remote_url", "lock_id", "force"), &LfsRemoteClient::delete_lock, DEFVAL(false));
+
+	ADD_SIGNAL(MethodInfo("lock_operation_ready",
+			PropertyInfo(Variant::STRING, "operation"),
+			PropertyInfo(Variant::DICTIONARY, "response"),
+			PropertyInfo(Variant::STRING, "error")));
+
 	ADD_SIGNAL(MethodInfo("batch_result_ready",
 			PropertyInfo(Variant::STRING, "operation"),
 			PropertyInfo(Variant::DICTIONARY, "response"),
@@ -58,6 +68,10 @@ void LfsRemoteClient::_notification(int p_what) {
 			_download_request = memnew(HTTPRequest);
 			add_child(_download_request);
 			_download_request->connect("request_completed", callable_mp(this, &LfsRemoteClient::_on_download_request_completed));
+
+			_lock_request = memnew(HTTPRequest);
+			add_child(_lock_request);
+			_lock_request->connect("request_completed", callable_mp(this, &LfsRemoteClient::_on_lock_request_completed));
 		} break;
 		case NOTIFICATION_EXIT_TREE: {
 			_join_all_upload_threads();
@@ -151,6 +165,117 @@ void LfsRemoteClient::_on_batch_request_completed(int result, int response_code,
 	}
 	Dictionary parsed_dict = parsed;
 	emit_signal("batch_result_ready", parsed_dict.get("transfer", "basic"), parsed_dict, "");
+}
+
+String LfsRemoteClient::base_locks_url(const String &remote_url) const {
+	String url = remote_url.strip_edges();
+	if (url.is_empty()) {
+		return String();
+	}
+	if (!url.ends_with(".git")) {
+		url += ".git";
+	}
+	return url + "/info/lfs/locks";
+}
+
+void LfsRemoteClient::list_locks(const String &remote_url, const String &path_filter, const String &cursor) {
+	String default_url = base_locks_url(remote_url);
+	if (default_url.is_empty()) {
+		emit_signal("lock_operation_ready", "list", Dictionary(), "Remote URL is empty.");
+		return;
+	}
+
+	String query;
+	if (!path_filter.is_empty()) {
+		query += "?path=" + path_filter.uri_encode();
+	}
+	if (!cursor.is_empty()) {
+		query += (query.is_empty() ? "?" : "&");
+		query += "cursor=" + cursor.uri_encode();
+	}
+
+	Callable on_complete = callable_mp(this, &LfsRemoteClient::_on_lock_auth_complete).bind("list", default_url, query, "GET", String());
+	credential_provider->request_auth(remote_url, "download", on_complete, "locks");
+}
+
+void LfsRemoteClient::create_lock(const String &remote_url, const String &path) {
+	String default_url = base_locks_url(remote_url);
+	if (default_url.is_empty()) {
+		emit_signal("lock_operation_ready", "create", Dictionary(), "Remote URL is empty.");
+		return;
+	}
+
+	Dictionary body_dict;
+	body_dict["path"] = path;
+	String body = JSON::stringify(body_dict);
+
+	Callable on_complete = callable_mp(this, &LfsRemoteClient::_on_lock_auth_complete).bind("create", default_url, String(), "POST", body);
+	credential_provider->request_auth(remote_url, "upload", on_complete, "locks");
+}
+
+void LfsRemoteClient::delete_lock(const String &remote_url, const String &lock_id, bool force) {
+	String default_url = base_locks_url(remote_url) + "/" + lock_id + "/unlock";
+	if (lock_id.is_empty() || default_url.is_empty()) {
+		emit_signal("lock_operation_ready", "delete", Dictionary(), "Remote URL or lock id is empty.");
+		return;
+	}
+
+	Dictionary body_dict;
+	body_dict["force"] = force;
+	String body = JSON::stringify(body_dict);
+
+	Callable on_complete = callable_mp(this, &LfsRemoteClient::_on_lock_auth_complete).bind("delete", default_url, String(), "POST", body);
+	credential_provider->request_auth(remote_url, "upload", on_complete, vformat("locks/%s/unlock", lock_id));
+}
+
+void LfsRemoteClient::_on_lock_auth_complete(bool ok, Dictionary headers, String error, String url_override, String operation_label, String default_url, String query_suffix, String method, String body) {
+	if (!ok) {
+		emit_signal("lock_operation_ready", operation_label, Dictionary(), error);
+		return;
+	}
+
+	String url = (url_override.is_empty() ? default_url : url_override) + query_suffix;
+
+	Dictionary merged;
+	merged["Accept"] = "application/vnd.git-lfs+json";
+	merged["Content-Type"] = "application/vnd.git-lfs+json";
+	Array header_keys = headers.keys();
+	for (int i = 0; i < header_keys.size(); i++) {
+		merged[header_keys[i]] = headers[header_keys[i]];
+	}
+
+	_send_lock_request(operation_label, url, method, body, merged);
+}
+
+void LfsRemoteClient::_send_lock_request(const String &operation_label, const String &url, const String &method, const String &body, const Dictionary &auth_headers) {
+	_pending_lock_operation = operation_label;
+	HTTPClient::Method http_method = method == "GET" ? HTTPClient::METHOD_GET : HTTPClient::METHOD_POST;
+	Error err = _lock_request->request(url, _headers_dict_to_array(auth_headers), http_method, body);
+	if (err != OK) {
+		emit_signal("lock_operation_ready", operation_label, Dictionary(), vformat("Failed to start lock request (error %d).", (int)err));
+	}
+}
+
+void LfsRemoteClient::_on_lock_request_completed(int result, int response_code, const PackedStringArray &headers, const PackedByteArray &body) {
+	String operation_label = _pending_lock_operation;
+	_pending_lock_operation = String();
+
+	if (result != HTTPRequest::RESULT_SUCCESS || response_code < 200 || response_code >= 300) {
+		emit_signal("lock_operation_ready", operation_label, Dictionary(), vformat("Lock request failed (result %d, HTTP %d).", result, response_code));
+		return;
+	}
+
+	if (body.is_empty()) {
+		emit_signal("lock_operation_ready", operation_label, Dictionary(), "");
+		return;
+	}
+
+	Variant parsed = JSON::parse_string(String::utf8(reinterpret_cast<const char *>(body.ptr()), body.size()));
+	if (parsed.get_type() != Variant::DICTIONARY) {
+		emit_signal("lock_operation_ready", operation_label, Dictionary(), "Lock response was not valid JSON.");
+		return;
+	}
+	emit_signal("lock_operation_ready", operation_label, parsed, "");
 }
 
 void LfsRemoteClient::download_object(const String &oid, const String &href, const Dictionary &header, const String &dest_path) {

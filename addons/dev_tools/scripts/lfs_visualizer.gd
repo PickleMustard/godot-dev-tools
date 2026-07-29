@@ -2,6 +2,7 @@
 extends Control
 
 const POLL_INTERVAL_SEC: float = 2.0
+const LOCK_POLL_INTERVAL_SEC: float = 60.0
 const GitStatusRowScene = preload("res://addons/dev_tools/menus/git_status_row.tscn")
 const LfsExtensionRowScene = preload("res://addons/dev_tools/menus/lfs_extension_row.tscn")
 
@@ -37,6 +38,11 @@ var _push_service: LfsPushService
 var _pre_pull_snapshot: Dictionary = {}
 var _active_pull_guard: LfsPullGuard
 
+var _lock_poll_timer: Timer
+var _lock_poll_in_progress: bool = false
+var _pending_retry_queue: Array = []
+
+@onready var active_edits_list: VBoxContainer = %LfsActiveEditsList
 @onready var staged_list: VBoxContainer = %LfsStagedList
 @onready var unstaged_list: VBoxContainer = %LfsUnstagedList
 @onready var browse_list: VBoxContainer = %LfsBrowseList
@@ -74,6 +80,13 @@ func _ready() -> void:
 	add_child(_poll_timer)
 	_poll_timer.timeout.connect(_on_poll_timeout)
 
+	_lock_poll_timer = Timer.new()
+	_lock_poll_timer.wait_time = _get_lock_poll_interval()
+	_lock_poll_timer.autostart = true
+	_lock_poll_timer.one_shot = false
+	add_child(_lock_poll_timer)
+	_lock_poll_timer.timeout.connect(_on_lock_poll_timeout)
+
 	if git_backend:
 		_request_initial_refresh_when_visible()
 
@@ -81,6 +94,8 @@ func _ready() -> void:
 func set_polling_active(active: bool) -> void:
 	if _poll_timer:
 		_poll_timer.paused = not active
+	if _lock_poll_timer:
+		_lock_poll_timer.paused = not active
 
 
 func _exit_tree() -> void:
@@ -133,6 +148,8 @@ func _refresh_all() -> void:
 		_refresh_changes()
 	_refresh_browse()
 	_refresh_status()
+	_refresh_active_edits()
+	_on_lock_poll_timeout()
 
 
 func _refresh_changes() -> void:
@@ -168,9 +185,24 @@ func _apply_changes_data(status: Dictionary, patterns: PackedStringArray) -> voi
 	unstaged_combined.append_array(status.get("untracked", []))
 	var unstaged := _filter_by_patterns(unstaged_combined, patterns)
 	unstaged = _filter_expected_lfs_divergence(unstaged)
+	unstaged = _filter_locked_by_me(unstaged)
 	_populate_status_list(unstaged_list, unstaged, GitStatusRow.ActionMode.STAGE)
 
 	_last_signature = {"status": status, "patterns": patterns}
+	_refresh_active_edits()
+
+
+func _filter_locked_by_me(entries: Array) -> Array:
+	var lock_mgr := _lock_manager()
+	if lock_mgr == null:
+		return entries
+	var result: Array = []
+	for entry in entries:
+		var e: Dictionary = entry
+		if lock_mgr.is_locked_by_me(e.get("path", "")):
+			continue
+		result.append(e)
+	return result
 
 
 func _filter_by_patterns(entries: Array, patterns: PackedStringArray) -> Array:
@@ -213,10 +245,29 @@ func _populate_status_list(list: VBoxContainer, entries: Array, mode: int) -> vo
 		var e: Dictionary = entry
 		var row: GitStatusRow = GitStatusRowScene.instantiate()
 		list.add_child(row)
-		row.load_entry(e.get("path", ""), e.get("status", ""), mode)
+		var path: String = e.get("path", "")
+		row.load_entry(path, e.get("status", ""), mode)
 		row.file_selected.connect(_on_row_selected)
 		row.stage_requested.connect(_on_stage_requested)
 		row.unstage_requested.connect(_on_unstage_requested)
+		_apply_lock_badge_to_row(row, path)
+
+
+## Configures a row's lock badge/affordance from LfsLockManager's current
+## state: grayed lock icon (no unlock affordance) if locked by someone
+## else, a Lock/Unlock button otherwise.
+func _apply_lock_badge_to_row(row: GitStatusRow, path: String) -> void:
+	var lock_mgr := _lock_manager()
+	if lock_mgr == null:
+		return
+	row.lock_requested.connect(_on_lock_requested)
+	row.unlock_requested.connect(_on_unlock_requested)
+	if lock_mgr.is_locked_by_other(path):
+		row.mark_locked(lock_mgr.get_lock_owner_name(path))
+	elif lock_mgr.is_locked_by_me(path):
+		row.configure_lock_button(true, lock_mgr.is_lock_confirmed_mine(path))
+	else:
+		row.configure_lock_button(false)
 
 
 func _refresh_browse() -> void:
@@ -264,6 +315,7 @@ func _apply_browse_data(files: PackedStringArray) -> void:
 		row.load_entry(path, "", GitStatusRow.ActionMode.STAGE)
 		row.action_button.visible = false
 		row.file_selected.connect(_on_row_selected)
+		_apply_lock_badge_to_row(row, path)
 
 
 func _on_poll_timeout() -> void:
@@ -299,6 +351,14 @@ func _on_rescan_pressed() -> void:
 
 
 func _on_row_selected(relative_path: String) -> void:
+	# This path calls EditorInterface.edit_resource() directly rather than
+	# going through EditorNode::load_scene_or_resource/FileSystemDock, so it
+	# bypasses every engine-side lock veto -- must check here too.
+	var lock_mgr := _lock_manager()
+	if lock_mgr and lock_mgr.is_locked_by_other(relative_path):
+		_show_error("'%s' is locked by %s and cannot be opened for editing." % [relative_path, lock_mgr.get_lock_owner_name(relative_path)])
+		return
+
 	var res_path := "res://" + relative_path.trim_prefix("/")
 	if not ResourceLoader.exists(res_path):
 		_show_error("Could not find resource '%s'." % res_path)
@@ -613,6 +673,175 @@ func _on_push_completed(pushed: int, failed_paths: Array) -> void:
 		message += " %d failed: %s" % [failed_paths.size(), ", ".join(failed_paths)]
 	_show_info(message)
 	_refresh_status(true)
+
+
+# --- Locking ---
+
+
+func _lock_manager() -> Object:
+	return Engine.get_singleton("LfsLockManager")
+
+
+func _get_lock_poll_interval() -> float:
+	if not git_backend:
+		return LOCK_POLL_INTERVAL_SEC
+	var configured := git_backend.get_config_string("devtools.lfs.lockpollintervalsec", "")
+	if configured.is_empty() or not configured.is_valid_float():
+		return LOCK_POLL_INTERVAL_SEC
+	return max(5.0, configured.to_float())
+
+
+func _sync_lock_identity_and_policy() -> void:
+	var lock_mgr := _lock_manager()
+	if lock_mgr == null or not git_backend:
+		return
+	lock_mgr.set_local_identity(git_backend.get_config_string("user.name", ""), "")
+	var max_locks_str := git_backend.get_config_string("devtools.lfs.maxlocks", "")
+	if max_locks_str.is_valid_int():
+		lock_mgr.set_max_locks(max_locks_str.to_int())
+
+
+func _refresh_active_edits() -> void:
+	for child in active_edits_list.get_children():
+		child.queue_free()
+
+	var lock_mgr := _lock_manager()
+	var paths: Array = lock_mgr.get_my_locked_paths() if lock_mgr else []
+	paths.sort()
+
+	if paths.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "(no active edits)"
+		active_edits_list.add_child(empty_label)
+		return
+
+	for path in paths:
+		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		active_edits_list.add_child(row)
+		row.load_entry(path, "locked", GitStatusRow.ActionMode.STAGE)
+		row.action_button.visible = false
+		row.file_selected.connect(_on_row_selected)
+		_apply_lock_badge_to_row(row, path)
+
+
+func _on_lock_poll_timeout() -> void:
+	if not repo_open or not is_visible_in_tree() or not git_backend:
+		return
+	if _lock_poll_in_progress:
+		return
+	var remote_url := _get_remote_url()
+	if remote_url.is_empty():
+		return
+
+	_sync_lock_identity_and_policy()
+
+	_lock_poll_in_progress = true
+	var lock_mgr := _lock_manager()
+	_pending_retry_queue = (lock_mgr.get_pending_actions() if lock_mgr else []).duplicate()
+	_drain_next_pending_action(remote_url)
+
+
+## Retries queued lock/unlock requests one at a time (the shared
+## %LfsRemoteClient node's _lock_request child only supports one in-flight
+## request), then does the actual list_locks poll once the queue is empty.
+func _drain_next_pending_action(remote_url: String) -> void:
+	if _pending_retry_queue.is_empty():
+		remote_client.lock_operation_ready.connect(_on_list_locks_result.bind(remote_url), CONNECT_ONE_SHOT)
+		remote_client.list_locks(remote_url)
+		return
+
+	var action: Dictionary = _pending_retry_queue.pop_front()
+	remote_client.lock_operation_ready.connect(_on_pending_action_result.bind(action, remote_url), CONNECT_ONE_SHOT)
+	if action.get("type", "") == "lock":
+		remote_client.create_lock(remote_url, action.get("path", ""))
+	else:
+		remote_client.delete_lock(remote_url, action.get("lock_id", ""))
+
+
+func _on_pending_action_result(_operation: String, response: Dictionary, error: String, action: Dictionary, remote_url: String) -> void:
+	var lock_mgr := _lock_manager()
+	if error.is_empty() and lock_mgr:
+		lock_mgr.clear_pending_action(action.get("path", ""))
+		if action.get("type", "") == "lock":
+			var lock: Dictionary = response.get("lock", {})
+			if lock.has("id"):
+				lock_mgr.record_self_created_lock(lock.get("id", ""), action.get("path", ""))
+		else:
+			lock_mgr.record_self_deleted_lock(action.get("lock_id", ""))
+	_drain_next_pending_action(remote_url)
+
+
+func _on_list_locks_result(_operation: String, response: Dictionary, error: String, _remote_url: String) -> void:
+	_lock_poll_in_progress = false
+	if not error.is_empty():
+		return
+	var lock_mgr := _lock_manager()
+	if lock_mgr:
+		lock_mgr.replace_locks(response.get("locks", []))
+	_refresh_active_edits()
+	_refresh_changes()
+	_refresh_browse()
+
+
+func _on_lock_requested(path: String) -> void:
+	var lock_mgr := _lock_manager()
+	if lock_mgr == null:
+		return
+	if not lock_mgr.can_acquire_more_locks():
+		_show_error("Lock limit reached (%d/%d). Unlock another file first." % [lock_mgr.get_my_lock_count(), lock_mgr.get_max_locks()])
+		return
+	var remote_url := _get_remote_url()
+	if remote_url.is_empty():
+		_show_error("No remote configured; cannot lock.")
+		return
+	remote_client.lock_operation_ready.connect(_on_create_lock_result.bind(path), CONNECT_ONE_SHOT)
+	remote_client.create_lock(remote_url, path)
+
+
+func _on_create_lock_result(_operation: String, response: Dictionary, error: String, path: String) -> void:
+	var lock_mgr := _lock_manager()
+	if not error.is_empty():
+		if lock_mgr:
+			lock_mgr.enqueue_pending_lock(path)
+		_show_error("Could not lock '%s': %s (will retry)." % [path, error])
+		return
+	var lock: Dictionary = response.get("lock", {})
+	if lock_mgr and lock.has("id"):
+		lock_mgr.record_self_created_lock(lock.get("id", ""), path)
+	_refresh_active_edits()
+	_refresh_changes()
+	_refresh_browse()
+
+
+func _on_unlock_requested(path: String) -> void:
+	var lock_mgr := _lock_manager()
+	if lock_mgr == null:
+		return
+	var lock: Dictionary = lock_mgr.get_lock_for_path(path)
+	var lock_id: String = lock.get("id", "")
+	if lock_id.is_empty():
+		_show_error("No known lock id for '%s'; cannot unlock yet (try rescanning)." % path)
+		return
+	var remote_url := _get_remote_url()
+	if remote_url.is_empty():
+		_show_error("No remote configured; cannot unlock.")
+		return
+	remote_client.lock_operation_ready.connect(_on_delete_lock_result.bind(lock_id, path), CONNECT_ONE_SHOT)
+	remote_client.delete_lock(remote_url, lock_id)
+
+
+func _on_delete_lock_result(_operation: String, response: Dictionary, error: String, lock_id: String, path: String) -> void:
+	var lock_mgr := _lock_manager()
+	if not error.is_empty():
+		if lock_mgr:
+			lock_mgr.enqueue_pending_unlock(lock_id, path)
+		_show_error("Could not unlock '%s': %s (will retry)." % [path, error])
+		return
+	if lock_mgr:
+		lock_mgr.record_self_deleted_lock(lock_id)
+	_refresh_active_edits()
+	_refresh_changes()
+	_refresh_browse()
 
 
 # --- Pull-time quarantine + repair ---

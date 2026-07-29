@@ -25,10 +25,15 @@ public:
 	virtual bool supports(const String &remote_url);
 
 	// on_complete: Callable(ok: bool, headers: Dictionary, error: String, batch_url_override: String = "")
-	// batch_url_override lets a provider replace the batch endpoint LfsRemoteClient
+	// batch_url_override lets a provider replace the endpoint LfsRemoteClient
 	// would otherwise derive from remote_url (needed for SSH remotes, where the
 	// real endpoint only becomes known from the git-lfs-authenticate response).
-	virtual void request_auth(const String &remote_url, const String &operation, const Callable &on_complete);
+	//
+	// endpoint identifies which LFS API path is being authenticated for --
+	// "objects/batch" (default) or "locks" -- so the SSH provider's
+	// git-lfs-authenticate href can be suffixed correctly per-call instead of
+	// hardcoding the batch path.
+	virtual void request_auth(const String &remote_url, const String &operation, const Callable &on_complete, const String &endpoint = "objects/batch");
 
 	// Shared helper: invokes an on_complete Callable with the fixed 4-arg
 	// contract every provider uses, so subclasses don't each restate it.

@@ -15,7 +15,7 @@ bool LfsSshCredentialProvider::supports(const String &remote_url) {
 	return remote_url.begins_with("git@") || remote_url.begins_with("ssh://");
 }
 
-void LfsSshCredentialProvider::request_auth(const String &remote_url, const String &operation, const Callable &on_complete) {
+void LfsSshCredentialProvider::request_auth(const String &remote_url, const String &operation, const Callable &on_complete, const String &endpoint) {
 	Dictionary info = _parse_ssh_url(remote_url);
 	if (info.is_empty()) {
 		call_auth_result(on_complete, false, Dictionary(), "Could not parse SSH remote URL.");
@@ -74,7 +74,7 @@ void LfsSshCredentialProvider::request_auth(const String &remote_url, const Stri
 		href = href.substr(0, href.length() - 1);
 	}
 
-	call_auth_result(on_complete, true, parsed_dict["header"], String(), href + "/objects/batch");
+	call_auth_result(on_complete, true, parsed_dict["header"], String(), href + "/" + endpoint);
 }
 
 Dictionary LfsSshCredentialProvider::_parse_ssh_url(const String &remote_url) {

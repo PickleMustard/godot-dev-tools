@@ -38,6 +38,11 @@ signal config_set_requested(key: String, value: String)
 @onready var init_default_branch_edit: LineEdit = %InitDefaultBranchEdit
 @onready var init_default_branch_save_button: Button = %InitDefaultBranchSaveButton
 
+@onready var max_locks_spinbox: SpinBox = %MaxLocksSpinBox
+@onready var max_locks_save_button: Button = %MaxLocksSaveButton
+@onready var lock_poll_interval_spinbox: SpinBox = %LockPollIntervalSpinBox
+@onready var lock_poll_interval_save_button: Button = %LockPollIntervalSaveButton
+
 @onready var custom_config_key_edit: LineEdit = %CustomConfigKeyEdit
 @onready var custom_config_value_edit: LineEdit = %CustomConfigValueEdit
 @onready var custom_config_set_button: Button = %CustomConfigSetButton
@@ -66,6 +71,9 @@ func _ready() -> void:
 	push_default_save_button.pressed.connect(_on_push_default_save_pressed)
 	init_default_branch_save_button.pressed.connect(_on_init_default_branch_save_pressed)
 
+	max_locks_save_button.pressed.connect(_on_max_locks_save_pressed)
+	lock_poll_interval_save_button.pressed.connect(_on_lock_poll_interval_save_pressed)
+
 	custom_config_set_button.pressed.connect(_on_custom_config_set_pressed)
 
 
@@ -90,6 +98,13 @@ func load_settings(data: Dictionary) -> void:
 	pull_rebase_check.button_pressed = data.get("pull_rebase", "") == "true"
 	_select_option_value(push_default_option, PUSH_DEFAULT_VALUES, data.get("push_default", ""))
 	init_default_branch_edit.text = data.get("init_default_branch", "")
+
+	var max_locks: String = data.get("lfs_max_locks", "")
+	if max_locks.is_valid_int():
+		max_locks_spinbox.value = max_locks.to_int()
+	var lock_poll_interval: String = data.get("lfs_lock_poll_interval_sec", "")
+	if lock_poll_interval.is_valid_float():
+		lock_poll_interval_spinbox.value = lock_poll_interval.to_float()
 
 
 func _select_option_value(option: OptionButton, values: Array, current: String) -> void:
@@ -165,6 +180,14 @@ func _on_init_default_branch_save_pressed() -> void:
 	if branch_name.is_empty():
 		return
 	config_set_requested.emit("init.defaultBranch", branch_name)
+
+
+func _on_max_locks_save_pressed() -> void:
+	config_set_requested.emit("devtools.lfs.maxlocks", str(int(max_locks_spinbox.value)))
+
+
+func _on_lock_poll_interval_save_pressed() -> void:
+	config_set_requested.emit("devtools.lfs.lockpollintervalsec", str(int(lock_poll_interval_spinbox.value)))
 
 
 func _on_custom_config_set_pressed() -> void:
