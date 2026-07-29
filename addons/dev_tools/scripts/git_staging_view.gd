@@ -5,8 +5,8 @@ signal file_selected(path: String)
 signal stage_requested(path: String)
 signal unstage_requested(path: String)
 
-@onready var staged_list: GitFileList = %StagedFileList
-@onready var unstaged_list: GitFileList = %UnstagedFileList
+@onready var staged_list: DevToolsGitFileList = %StagedFileList
+@onready var unstaged_list: DevToolsGitFileList = %UnstagedFileList
 
 
 func _ready() -> void:
@@ -17,8 +17,8 @@ func _ready() -> void:
 
 
 func load_diffs(staged_files: Array, unstaged_files: Array) -> void:
-	staged_list.load_files(staged_files, GitFilePanel.ActionMode.UNSTAGE)
-	unstaged_list.load_files(unstaged_files, GitFilePanel.ActionMode.STAGE)
+	staged_list.load_files(staged_files, DevToolsGitFilePanel.ActionMode.UNSTAGE)
+	unstaged_list.load_files(unstaged_files, DevToolsGitFilePanel.ActionMode.STAGE)
 
 
 func get_hunks_for(path: String) -> Array:

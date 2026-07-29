@@ -1,5 +1,5 @@
 @tool
-class_name GitAttributesUtil
+class_name DevToolsGitAttributesUtil
 extends RefCounted
 
 const LFS_SUFFIX := "filter=lfs diff=lfs merge=lfs -text"

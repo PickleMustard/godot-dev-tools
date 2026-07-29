@@ -1,5 +1,5 @@
 @tool
-class_name GitStatusRow
+class_name DevToolsGitStatusRow
 extends PanelContainer
 
 enum ActionMode { STAGE, UNSTAGE }

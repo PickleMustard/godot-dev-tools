@@ -146,7 +146,7 @@ func _on_git_status_ready(status: Dictionary) -> void:
 
 func _refresh_all() -> void:
 	if _has_cached_status:
-		var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+		var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 		_apply_changes_data(_cached_status, patterns)
 	else:
 		_refresh_changes()
@@ -158,8 +158,8 @@ func _refresh_all() -> void:
 
 func _refresh_changes() -> void:
 	if not repo_open or not git_backend:
-		_populate_status_list(staged_list, [], GitStatusRow.ActionMode.UNSTAGE)
-		_populate_status_list(unstaged_list, [], GitStatusRow.ActionMode.STAGE)
+		_populate_status_list(staged_list, [], DevToolsGitStatusRow.ActionMode.UNSTAGE)
+		_populate_status_list(unstaged_list, [], DevToolsGitStatusRow.ActionMode.STAGE)
 		return
 	if _changes_in_progress:
 		return
@@ -171,7 +171,7 @@ func _refresh_changes() -> void:
 
 
 func _refresh_changes_worker() -> void:
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var status: Dictionary = git_backend.get_status()
 	call_deferred("_apply_changes_data", status, patterns)
 
@@ -182,7 +182,7 @@ func _apply_changes_data(status: Dictionary, patterns: PackedStringArray) -> voi
 	_changes_in_progress = false
 
 	var staged := _filter_by_patterns(status.get("staged", []), patterns)
-	_populate_status_list(staged_list, staged, GitStatusRow.ActionMode.UNSTAGE)
+	_populate_status_list(staged_list, staged, DevToolsGitStatusRow.ActionMode.UNSTAGE)
 
 	var unstaged_combined: Array = []
 	unstaged_combined.append_array(status.get("unstaged", []))
@@ -190,7 +190,7 @@ func _apply_changes_data(status: Dictionary, patterns: PackedStringArray) -> voi
 	var unstaged := _filter_by_patterns(unstaged_combined, patterns)
 	unstaged = _filter_expected_lfs_divergence(unstaged)
 	unstaged = _filter_locked_by_me(unstaged)
-	_populate_status_list(unstaged_list, unstaged, GitStatusRow.ActionMode.STAGE)
+	_populate_status_list(unstaged_list, unstaged, DevToolsGitStatusRow.ActionMode.STAGE)
 
 	_last_signature = {"status": status, "patterns": patterns}
 	_refresh_active_edits()
@@ -214,7 +214,7 @@ func _filter_by_patterns(entries: Array, patterns: PackedStringArray) -> Array:
 	for entry in entries:
 		var e: Dictionary = entry
 		var path: String = e.get("path", "")
-		var pattern := GitAttributesUtil.extension_to_pattern(path.get_extension())
+		var pattern := DevToolsGitAttributesUtil.extension_to_pattern(path.get_extension())
 		if patterns.has(pattern):
 			result.append(e)
 	return result
@@ -224,7 +224,7 @@ func _filter_expected_lfs_divergence(entries: Array) -> Array:
 	var manifest := LfsManifest.load_manifest(project_root)
 	if manifest.is_empty():
 		return entries
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var result: Array = []
 	for entry in entries:
 		var e: Dictionary = entry
@@ -247,7 +247,7 @@ func _populate_status_list(list: VBoxContainer, entries: Array, mode: int) -> vo
 
 	for entry in entries:
 		var e: Dictionary = entry
-		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		var row: DevToolsGitStatusRow = GitStatusRowScene.instantiate()
 		list.add_child(row)
 		var path: String = e.get("path", "")
 		row.load_entry(path, e.get("status", ""), mode)
@@ -260,7 +260,7 @@ func _populate_status_list(list: VBoxContainer, entries: Array, mode: int) -> vo
 ## Configures a row's lock badge/affordance from LfsLockManager's current
 ## state: grayed lock icon (no unlock affordance) if locked by someone
 ## else, a Lock/Unlock button otherwise.
-func _apply_lock_badge_to_row(row: GitStatusRow, path: String) -> void:
+func _apply_lock_badge_to_row(row: DevToolsGitStatusRow, path: String) -> void:
 	var lock_mgr := _lock_manager()
 	if lock_mgr == null:
 		return
@@ -292,7 +292,7 @@ func _refresh_browse() -> void:
 
 
 func _refresh_browse_worker() -> void:
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var files := LfsScanner.scan_files_matching_patterns(project_root, patterns)
 	call_deferred("_apply_browse_data", files)
 
@@ -314,9 +314,9 @@ func _apply_browse_data(files: PackedStringArray) -> void:
 		return
 
 	for path in files:
-		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		var row: DevToolsGitStatusRow = GitStatusRowScene.instantiate()
 		browse_list.add_child(row)
-		row.load_entry(path, "", GitStatusRow.ActionMode.STAGE)
+		row.load_entry(path, "", DevToolsGitStatusRow.ActionMode.STAGE)
 		row.action_button.visible = false
 		row.file_selected.connect(_on_row_selected)
 		_apply_lock_badge_to_row(row, path)
@@ -335,7 +335,7 @@ func _on_poll_timeout() -> void:
 
 
 func _poll_signature_worker() -> void:
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var status: Dictionary = git_backend.get_status()
 	var sig := {"status": status, "patterns": patterns}
 	call_deferred("_apply_poll_signature", sig)
@@ -431,7 +431,7 @@ func _refresh_status(check_remote: bool = false) -> void:
 
 
 func _refresh_status_worker(check_remote: bool) -> void:
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var manifest := LfsManifest.load_manifest(project_root)
 	var statuses := LfsStatusScanner.scan(project_root, patterns, manifest)
 	call_deferred("_apply_status_data", patterns, statuses, check_remote)
@@ -480,7 +480,7 @@ func _populate_extension_status_list(patterns: PackedStringArray, aggregate: Dic
 	sorted_patterns.sort()
 
 	for pattern in sorted_patterns:
-		var row: LfsExtensionRow = LfsExtensionRowScene.instantiate()
+		var row: DevToolsLfsExtensionRow = LfsExtensionRowScene.instantiate()
 		extension_status_list.add_child(row)
 		row.load_entry(pattern, patterns.has(pattern))
 		row.set_status_summary(aggregate.get(pattern, {}))
@@ -488,7 +488,7 @@ func _populate_extension_status_list(patterns: PackedStringArray, aggregate: Dic
 
 
 func _on_extension_pattern_toggled(pattern: String, tracked: bool) -> void:
-	GitAttributesUtil.set_pattern_tracked(gitattributes_path, pattern, tracked)
+	DevToolsGitAttributesUtil.set_pattern_tracked(gitattributes_path, pattern, tracked)
 	_refresh_status()
 
 
@@ -503,9 +503,9 @@ func _populate_quarantined_list(quarantined_paths: Array) -> void:
 		return
 
 	for path in quarantined_paths:
-		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		var row: DevToolsGitStatusRow = GitStatusRowScene.instantiate()
 		quarantined_list.add_child(row)
-		row.load_entry(path, "quarantined", GitStatusRow.ActionMode.STAGE)
+		row.load_entry(path, "quarantined", DevToolsGitStatusRow.ActionMode.STAGE)
 		row.mark_quarantined()
 		row.action_button.text = "Retry"
 		row.stage_requested.connect(_on_quarantine_retry_requested)
@@ -597,7 +597,7 @@ func _on_rebuild_pressed() -> void:
 
 
 func _rebuild_scan_worker() -> void:
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var result := _rebuild_service.scan_pending(patterns)
 	call_deferred("_apply_rebuild_scan", result)
 
@@ -726,9 +726,9 @@ func _refresh_active_edits() -> void:
 		return
 
 	for path in paths:
-		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		var row: DevToolsGitStatusRow = GitStatusRowScene.instantiate()
 		active_edits_list.add_child(row)
-		row.load_entry(path, "locked", GitStatusRow.ActionMode.STAGE)
+		row.load_entry(path, "locked", DevToolsGitStatusRow.ActionMode.STAGE)
 		row.action_button.visible = false
 		row.file_selected.connect(_on_row_selected)
 		_apply_lock_badge_to_row(row, path)
@@ -858,7 +858,7 @@ func _on_delete_lock_result(_operation: String, response: Dictionary, error: Str
 
 
 func _on_pull_starting() -> void:
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	_pre_pull_snapshot = LfsPullGuard.snapshot(project_root, patterns)
 
 
@@ -867,7 +867,7 @@ func _on_pull_finished_relay(ok: bool, _error_message: String, merge_result: int
 		_pre_pull_snapshot = {}
 		return
 
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	var newly_quarantined := LfsPullGuard.quarantine_changed_pointers(project_root, patterns, _pre_pull_snapshot)
 	_pre_pull_snapshot = {}
 	_refresh_all()

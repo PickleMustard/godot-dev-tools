@@ -236,13 +236,13 @@ func _apply_refresh_data(data: Dictionary) -> void:
 
 	var status: Dictionary = data["status"]
 	status_ready.emit(status)
-	_populate_file_list(staged_list, status.get("staged", []), GitStatusRow.ActionMode.UNSTAGE)
+	_populate_file_list(staged_list, status.get("staged", []), DevToolsGitStatusRow.ActionMode.UNSTAGE)
 
 	var unstaged_combined: Array = []
 	unstaged_combined.append_array(status.get("unstaged", []))
 	unstaged_combined.append_array(status.get("untracked", []))
 	unstaged_combined = _filter_expected_lfs_divergence(unstaged_combined)
-	_populate_file_list(unstaged_list, unstaged_combined, GitStatusRow.ActionMode.STAGE)
+	_populate_file_list(unstaged_list, unstaged_combined, DevToolsGitStatusRow.ActionMode.STAGE)
 
 	var history: Array = data["history"]
 	_populate_history_preview(history)
@@ -325,7 +325,7 @@ func _compute_poll_signature() -> Dictionary:
 func _filter_expected_lfs_divergence(entries: Array) -> Array:
 	if gitattributes_path.is_empty():
 		return entries
-	var patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	if patterns.is_empty():
 		return entries
 	var manifest := LfsManifest.load_manifest(project_root)
@@ -347,7 +347,7 @@ func _populate_file_list(list: VBoxContainer, entries: Array, mode: int) -> void
 		child.queue_free()
 	for entry in entries:
 		var e: Dictionary = entry
-		var row: GitStatusRow = GitStatusRowScene.instantiate()
+		var row: DevToolsGitStatusRow = GitStatusRowScene.instantiate()
 		list.add_child(row)
 		row.load_entry(e.get("path", ""), e.get("status", ""), mode)
 		row.file_selected.connect(_on_sidebar_file_selected)

@@ -94,7 +94,7 @@ func _refresh_lfs_checkboxes() -> void:
 
 func _refresh_lfs_checkboxes_worker() -> void:
 	var extensions := LfsScanner.scan_binary_extensions(project_root)
-	var tracked_patterns := GitAttributesUtil.get_lfs_patterns(gitattributes_path)
+	var tracked_patterns := DevToolsGitAttributesUtil.get_lfs_patterns(gitattributes_path)
 	call_deferred("_apply_lfs_checkboxes_data", extensions, tracked_patterns)
 
 
@@ -115,15 +115,15 @@ func _apply_lfs_checkboxes_data(extensions: PackedStringArray, tracked_patterns:
 		return
 
 	for ext in extensions:
-		var pattern := GitAttributesUtil.extension_to_pattern(ext)
-		var row: LfsExtensionRow = LfsExtensionRowScene.instantiate()
+		var pattern := DevToolsGitAttributesUtil.extension_to_pattern(ext)
+		var row: DevToolsLfsExtensionRow = LfsExtensionRowScene.instantiate()
 		lfs_checkbox_list.add_child(row)
 		row.load_entry(pattern, tracked_patterns.has(pattern))
 		row.tracked_toggled.connect(_on_lfs_pattern_toggled)
 
 
 func _on_lfs_pattern_toggled(pattern: String, tracked: bool) -> void:
-	GitAttributesUtil.set_pattern_tracked(gitattributes_path, pattern, tracked)
+	DevToolsGitAttributesUtil.set_pattern_tracked(gitattributes_path, pattern, tracked)
 	if not _gitattributes_dirty:
 		_load_gitattributes_edit()
 

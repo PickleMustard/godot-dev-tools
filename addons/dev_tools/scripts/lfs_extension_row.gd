@@ -1,5 +1,5 @@
 @tool
-class_name LfsExtensionRow
+class_name DevToolsLfsExtensionRow
 extends PanelContainer
 
 signal tracked_toggled(pattern: String, tracked: bool)

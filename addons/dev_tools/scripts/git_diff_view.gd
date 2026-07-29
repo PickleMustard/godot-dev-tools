@@ -3,7 +3,7 @@ extends ScrollContainer
 
 signal file_selected(path: String)
 
-@onready var file_list: GitFileList = %DiffFileList
+@onready var file_list: DevToolsGitFileList = %DiffFileList
 
 
 func _ready() -> void:
@@ -11,7 +11,7 @@ func _ready() -> void:
 
 
 func load_diff(files: Array) -> void:
-	file_list.load_files(files, GitFilePanel.ActionMode.NONE)
+	file_list.load_files(files, DevToolsGitFilePanel.ActionMode.NONE)
 
 
 func get_hunks_for(path: String) -> Array:
