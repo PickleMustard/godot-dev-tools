@@ -22,7 +22,7 @@ Planned, not yet implemented:
 
 ## Two-part install story
 
-- **Part A — GDScript addon.** Copy or git-submodule `addons/dev_tools/` into your project, enable the plugin. Works standalone on a stock Godot editor.
+- **Part A — GDScript addon.** Merge `addons/dev_tools/` into your project's `addons/` folder (submodule the whole repo to a vendor location and sync just that subtree, or plain-copy it) and enable the plugin. Works standalone on a stock Godot editor.
 - **Part B — Git/LFS panels (optional).** `GitBackend`/`Lfs*` are core C++ engine classes, not a GDExtension — they only exist in a custom-compiled Godot editor binary with this repo's module built in.
 
 Running Part A only on a stock editor is a fully supported configuration: the addon detects the missing module and shows a "module missing" notice in place of the Git/Dotfiles/LFS tabs instead of erroring.
@@ -32,8 +32,9 @@ See **[INSTALL.md](INSTALL.md)** for full step-by-step instructions for both par
 ## Quick start
 
 ```
-git submodule add <this-repo-url> addons/dev_tools
+git submodule add <this-repo-url> vendor/dev_tools
 git submodule update --init --recursive
+rsync -a --delete vendor/dev_tools/addons/dev_tools/ addons/dev_tools/
 ```
 Then in the Godot editor: Project Settings > Plugins > enable "Dev Tools". Full detail (including the Part B engine build) is in [INSTALL.md](INSTALL.md).
 
